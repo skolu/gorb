@@ -16,6 +16,10 @@ type (
 	}
 )
 
+const (
+	timeFormat = "2006-01-02 15:04:05"
+)
+
 type (
 	GorbConnection interface {
 		EntityGet(entity interface{}, pk interface{}) (bool, error)
@@ -178,10 +182,10 @@ func (t *table) populateChildren(row reflect.Value) (bool, error) {
 	var rowKey reflect.Value
 	rowKey = row.FieldByIndex(t.primaryKey.classIdx)
 
-	var e error
-	var rows *sql.Rows
-
 	for _, childTable := range t.children {
+		var e error
+		var rows *sql.Rows
+
 		childStorage := row.FieldByIndex(childTable.classIdx)
 		if childStorage.IsNil() {
 			switch childTable.childClass.Kind() {
@@ -247,11 +251,7 @@ func (t *table) populateChildren(row reflect.Value) (bool, error) {
 
 	}
 
-	if rows == nil {
-		return false, e
-	}
-
-	return false, nil
+	return true, nil
 }
 
 func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, error) {
@@ -284,7 +284,19 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 		rowValue = rowValue.Elem()
 	}
 	for i, f := range ent.fields {
-		flds[i] = rowValue.FieldByIndex(f.classIdx).Addr().Interface()
+		pV := rowValue.FieldByIndex(f.classIdx).Addr().Interface()
+		switch f.dataType {
+		case Integer, Float, Bool, DateTime, String:
+			{
+				var gs gorbScanner
+				gs.ptr = pV
+				flds[i] = &gs
+			}
+		default:
+			{
+				flds[i] = pV
+			}
+		}
 	}
 
 	e = ent.stmts.stmtSelect.QueryRow(pk).Scan(flds...)
@@ -304,6 +316,21 @@ func (t *table) cascadeDelete(txn *sql.Tx, pk interface{}) error {
 	return e
 }
 
+func (conn *GorbManager) deleteEntity(ent *entity, pk interface{}) (bool, error) {
+	var e error
+	txn, e := conn.db.Begin()
+	if e != nil {
+		return false, e
+	}
+	e = ent.cascadeDelete(txn, pk)
+	if e == nil {
+		e = txn.Commit()
+	} else {
+		txn.Rollback()
+	}
+	return e == nil, e
+}
+
 func (conn *GorbManager) EntityDelete(eType reflect.Type, pk interface{}) (bool, error) {
 	if conn.db == nil {
 		return false, fmt.Errorf("Database connection is not set")
@@ -319,16 +346,5 @@ func (conn *GorbManager) EntityDelete(eType reflect.Type, pk interface{}) (bool,
 		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
 	}
 
-	var e error
-	txn, e := conn.db.Begin()
-	if e != nil {
-		return false, e
-	}
-	e = ent.cascadeDelete(txn, pk)
-	if e == nil {
-		e = txn.Commit()
-	} else {
-		txn.Rollback()
-	}
-	return e == nil, e
+	return conn.deleteEntity(ent, pk)
 }

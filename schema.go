@@ -22,10 +22,11 @@ const (
 )
 const (
 	TagPrefix  string = "gorb"
-	TagPK      string = "pk"
-	TagFK      string = "fk"
-	TagIndex   string = "index"
-	TagTeenant string = "teenant"
+	TagPK      string = "pk"      // field: primary key
+	TagFK      string = "fk"      // field: foreign key
+	TagIndex   string = "index"   // field: ???
+	TagTeenant string = "teenant" // entity: makes entity multi-teenant
+	TagToken   string = "token"   // entity: Update fail if not equal
 )
 
 type FieldFlag uint
@@ -57,6 +58,8 @@ type (
 
 	entity struct {
 		table
+		tokenField   *field
+		teenantField *field
 	}
 )
 
@@ -94,9 +97,11 @@ func getPrimitiveDataType(t reflect.Type) DataType {
 	switch dt.Kind() {
 	case reflect.Bool:
 		return Bool
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint8, reflect.Uint16, reflect.Int8, reflect.Int16:
+		fmt.Printf("short integer fields are not supported")
+	case reflect.Uint, reflect.Uint32, reflect.Uint64:
 		return Integer
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	case reflect.Int, reflect.Int32, reflect.Int64:
 		return Integer
 	case reflect.Float32, reflect.Float64:
 		return Float
@@ -152,8 +157,7 @@ func (t *table) PrintGorbSchema() {
 		}
 		var ft string
 		switch fld.dataType {
-		case Bool:
-		case Integer:
+		case Bool, Integer:
 			ft = "INTEGER"
 		case String:
 			ft = "TEXT"
