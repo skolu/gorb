@@ -144,7 +144,7 @@ func (t *table) check() (bool, error) {
 	return true, nil
 }
 
-func (t *table) PrintGorgSchema() {
+func (t *table) PrintGorbSchema() {
 	fmt.Printf("CREATE TABLE %s (\n", t.tableName)
 	for i, fld := range t.fields {
 		if i > 0 {
@@ -162,7 +162,7 @@ func (t *table) PrintGorgSchema() {
 		case Blob:
 			ft = "BLOB"
 		case DateTime:
-			ft = "INTEGER"
+			ft = "DATETIME"
 		}
 		fmt.Printf("\t%s\t%s", fld.sqlName, ft)
 		if t.primaryKey == fld {
@@ -187,7 +187,7 @@ func (t *table) PrintGorgSchema() {
 	fmt.Printf("\n);\n")
 
 	for _, chld := range t.children {
-		chld.PrintGorgSchema()
+		chld.PrintGorbSchema()
 
 		defer fmt.Printf("CREATE INDEX %s_FK ON %s(%s);\n", strings.ToUpper(chld.tableName), chld.tableName, chld.parentKey.sqlName)
 	}
@@ -328,8 +328,8 @@ func (mgr *GorbManager) EntityByType(class reflect.Type) (interface{}, error) {
 		return nil, errors.New(fmt.Sprintf("Class not registered"))
 	}
 
-	ret := reflect.New(e.rowClass)
-	initf, ok := ret.Interface().(interface {
+	ret := reflect.New(e.rowClass).Interface()
+	initf, ok := ret.(interface {
 		OnEntityInit()
 	})
 	if ok {
@@ -349,4 +349,17 @@ func (mgr *GorbManager) EntityByName(name string) (interface{}, error) {
 	}
 	ret, err := mgr.EntityByType(class)
 	return ret, err
+}
+
+func (mgr *GorbManager) SetDB(db *sql.DB) (bool, error) {
+	mgr.db = db
+
+	for _, ent := range mgr.entities {
+		res, e := ent.createStatements(db, []*table{})
+		if !res {
+			return res, e
+		}
+	}
+
+	return true, nil
 }

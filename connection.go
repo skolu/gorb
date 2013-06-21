@@ -89,6 +89,7 @@ func (t *table) getUpdateQuery() string {
 			buffer.WriteString(", ")
 		}
 		if f != t.primaryKey {
+			i++
 			buffer.WriteString(f.sqlName)
 			buffer.WriteString("=?")
 		}
@@ -103,15 +104,19 @@ func (t *table) getUpdateQuery() string {
 func (t *table) getDeleteQuery(tablePath []*table) string {
 	var buffer bytes.Buffer
 
-	tables := append(tablePath, t)
+	if len(tablePath) == 0 {
+		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.tableName, t.primaryKey.sqlName))
+	} else {
+		tables := append(tablePath, t)
 
-	buffer.WriteString(fmt.Sprintf("DELETE FROM %s t%d", t.tableName, len(tables)))
-	if len(tablePath) > 0 {
-		for i := len(tablePath) - 1; i > 0; i-- {
-			buffer.WriteString(fmt.Sprintf("INNER JOIN %s t%d ON t%d.%s = t%d.%s", tables[i-1].tableName, i, i, tables[i-1].primaryKey.sqlName, i, tables[i].parentKey.sqlName))
+		buffer.WriteString(fmt.Sprintf("DELETE t%d FROM %s t%d", len(tables), t.tableName, len(tables)))
+		if len(tablePath) > 0 {
+			for i := len(tablePath) - 1; i > 0; i-- {
+				buffer.WriteString(fmt.Sprintf("INNER JOIN %s t%d ON t%d.%s = t%d.%s", tables[i-1].tableName, i, i, tables[i-1].primaryKey.sqlName, i, tables[i].parentKey.sqlName))
+			}
 		}
+		buffer.WriteString(fmt.Sprintf(" WHERE t1.%s = ?", tables[0].primaryKey.sqlName))
 	}
-	buffer.WriteString(fmt.Sprintf(" WHERE t1.%s = ?", tables[0].primaryKey.sqlName))
 
 	return buffer.String()
 }
@@ -211,7 +216,7 @@ func (t *table) populateChildren(row reflect.Value) (bool, error) {
 					flds[i] = childRow.FieldByIndex(f.classIdx)
 				}
 			}
-			e = rows.Scan(flds)
+			e = rows.Scan(flds...)
 			if e != nil {
 				rows.Close()
 				return false, e
@@ -259,7 +264,8 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 	}
 
 	eType := reflect.TypeOf(object)
-	if eType.Kind() == reflect.Ptr {
+	var isPtr bool = eType.Kind() == reflect.Ptr
+	if isPtr {
 		eType = eType.Elem()
 	}
 
@@ -274,18 +280,14 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 	flds = make([]interface{}, len(ent.fields))
 
 	rowValue := reflect.ValueOf(object)
+	if isPtr {
+		rowValue = rowValue.Elem()
+	}
 	for i, f := range ent.fields {
-		if f.fieldType.Kind() == reflect.Ptr {
-			ptrV := reflect.New(f.fieldType)
-			fldV := rowValue.FieldByIndex(f.classIdx)
-			fldV.Set(ptrV)
-			flds[i] = ptrV.Elem()
-		} else {
-			flds[i] = rowValue.FieldByIndex(f.classIdx)
-		}
+		flds[i] = rowValue.FieldByIndex(f.classIdx).Addr().Interface()
 	}
 
-	e = ent.stmts.stmtSelect.QueryRow(pk).Scan(flds)
+	e = ent.stmts.stmtSelect.QueryRow(pk).Scan(flds...)
 	if e != nil {
 		return false, e
 	}
