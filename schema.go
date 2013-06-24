@@ -21,15 +21,11 @@ const (
 	Blob
 )
 const (
-	TagPrefix  string = "gorb"
-	TagPK      string = "pk"      // field: primary key
-	TagFK      string = "fk"      // field: foreign key
-	TagIndex   string = "index"   // field: ???
-	TagTeenant string = "teenant" // entity: makes entity multi-teenant
-	TagToken   string = "token"   // entity: Update fail if not equal
+	TagPrefix string = "gorb"
+	TagPK     string = "pk"    // field: primary key
+	TagFK     string = "fk"    // field: foreign key
+	TagIndex  string = "index" // field: ???
 )
-
-type FieldFlag uint
 
 type (
 	field struct {
@@ -65,7 +61,7 @@ type (
 
 type (
 	GorbEntityEvents interface {
-		OnEntitySave()
+		OnEntitySave() (bool, error)
 		OnEntityInit()
 	}
 
@@ -149,7 +145,7 @@ func (t *table) check() (bool, error) {
 	return true, nil
 }
 
-func (t *table) PrintGorbSchema() {
+func (t *table) printGorbSchema() {
 	fmt.Printf("CREATE TABLE %s (\n", t.tableName)
 	for i, fld := range t.fields {
 		if i > 0 {
@@ -191,7 +187,7 @@ func (t *table) PrintGorbSchema() {
 	fmt.Printf("\n);\n")
 
 	for _, chld := range t.children {
-		chld.PrintGorbSchema()
+		chld.printGorbSchema()
 
 		defer fmt.Printf("CREATE INDEX %s_FK ON %s(%s);\n", strings.ToUpper(chld.tableName), chld.tableName, chld.parentKey.sqlName)
 	}
@@ -282,12 +278,26 @@ func (t *table) extractGorbSchema(class reflect.Type, path []int) (bool, error) 
 	return true, nil
 }
 
+func (mgr *GorbManager) PrintGorbSchema(class reflect.Type) {
+	ent := mgr.entities[class]
+	if ent != nil {
+		ent.printGorbSchema()
+	} else {
+		fmt.Printf("Class %s not registered", class.Name())
+	}
+}
+
 func (mgr *GorbManager) LookupEntity(class reflect.Type) *entity {
 	if mgr.entities != nil {
 		return mgr.entities[class]
 	}
 	return nil
 }
+
+func (mgr *GorbManager) LookupEntityType(tableName string) reflect.Type {
+	return mgr.names[tableName]
+}
+
 func (mgr *GorbManager) RegisterEntity(class reflect.Type, tableName string) (bool, error) {
 	if class.Kind() != reflect.Struct {
 		return false, errors.New(fmt.Sprintf("Invalid Gorb entity type: %s. Struct expected", class.Name()))

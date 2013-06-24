@@ -24,7 +24,7 @@ type (
 	GorbConnection interface {
 		EntityGet(entity interface{}, pk interface{}) (bool, error)
 		EntityPut(entity interface{}) (bool, error)
-		EntityDelete(pk interface{}) (bool, error)
+		EntityDelete(eType reflect.Type, pk interface{}) (bool, error)
 	}
 )
 
@@ -341,6 +341,9 @@ func (conn *GorbManager) EntityDelete(eType reflect.Type, pk interface{}) (bool,
 	}
 
 	var ent *entity
+	if eType.Kind() == reflect.Ptr {
+		eType = eType.Elem()
+	}
 	ent = conn.LookupEntity(eType)
 	if ent == nil {
 		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
