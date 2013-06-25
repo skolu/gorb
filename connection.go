@@ -19,13 +19,15 @@ const (
 	timeFormat = "2006-01-02 15:04:05"
 )
 
-type (
-	GorbConnection interface {
-		EntityGet(entity interface{}, pk interface{}) (bool, error)
-		EntityPut(entity interface{}) (bool, error)
-		EntityDelete(eType reflect.Type, pk interface{}) (bool, error)
+func (t *Table) dumpQueries(tablePath []*Table) {
+	fmt.Printf("Select \"%s\": %s\n", t.TableName, t.getSelectQuery(tablePath))
+	for _, chld := range t.Children {
+		chld.dumpQueries(append(tablePath, t))
 	}
-)
+}
+func (ent *Entity) DumpQueries() {
+	ent.dumpQueries(make([]*Table, 0, 8))
+}
 
 func (t *Table) createStatements(db *sql.DB, tablePath []*Table) (bool, error) {
 	stmts := new(tableStmts)
@@ -156,16 +158,6 @@ func (t *Table) populateChildren(row reflect.Value) (bool, error) {
 	return true, nil
 }
 
-func (t *Table) dumpQueries(tablePath []*Table) {
-	fmt.Printf("Select \"%s\": %s\n", t.TableName, t.getSelectQuery(tablePath))
-	for _, chld := range t.Children {
-		chld.dumpQueries(append(tablePath, t))
-	}
-}
-func (ent *Entity) DumpQueries() {
-	ent.dumpQueries(make([]*Table, 0, 8))
-}
-
 func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, error) {
 	if conn.db == nil {
 		return false, fmt.Errorf("Database connection is not set")
@@ -197,18 +189,9 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 	}
 	for i, f := range ent.Fields {
 		pV := rowValue.FieldByIndex(f.classIdx).Addr().Interface()
-		switch f.DataType {
-		case Int32, Int64, Float, Bool, DateTime, String:
-			{
-				var gs gorbScanner
-				gs.ptr = pV
-				flds[i] = &gs
-			}
-		default:
-			{
-				flds[i] = pV
-			}
-		}
+		var gs gorbScanner
+		gs.ptr = pV
+		flds[i] = &gs
 	}
 
 	e = ent.stmts.stmtSelect.QueryRow(pk).Scan(flds...)
@@ -241,25 +224,4 @@ func (conn *GorbManager) deleteEntity(ent *Entity, pk interface{}) (bool, error)
 		txn.Rollback()
 	}
 	return e == nil, e
-}
-
-func (conn *GorbManager) EntityDelete(eType reflect.Type, pk interface{}) (bool, error) {
-	if conn.db == nil {
-		return false, fmt.Errorf("Database connection is not set")
-	}
-
-	if pk == nil {
-		return false, fmt.Errorf("EntityGet: parameters cannot be nil")
-	}
-
-	var ent *Entity
-	if eType.Kind() == reflect.Ptr {
-		eType = eType.Elem()
-	}
-	ent = conn.LookupEntity(eType)
-	if ent == nil {
-		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
-	}
-
-	return conn.deleteEntity(ent, pk)
 }

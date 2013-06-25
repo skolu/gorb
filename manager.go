@@ -12,6 +12,12 @@ type (
 		OnEntityInit()
 	}
 
+	GorbConnection interface {
+		EntityGet(entity interface{}, pk interface{}) (bool, error)
+		EntityPut(entity interface{}) (bool, error)
+		EntityDelete(eType reflect.Type, pk interface{}) (bool, error)
+	}
+
 	GorbManager struct {
 		Entities map[reflect.Type]*Entity
 		names    map[string]reflect.Type
@@ -112,4 +118,46 @@ func (mgr *GorbManager) SetDB(db *sql.DB) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (conn *GorbManager) EntityDelete(eType reflect.Type, pk interface{}) (bool, error) {
+	if conn.db == nil {
+		return false, fmt.Errorf("Database connection is not set")
+	}
+
+	if pk == nil {
+		return false, fmt.Errorf("EntityGet: parameters cannot be nil")
+	}
+
+	var ent *Entity
+	if eType.Kind() == reflect.Ptr {
+		eType = eType.Elem()
+	}
+	ent = conn.LookupEntity(eType)
+	if ent == nil {
+		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
+	}
+
+	return conn.deleteEntity(ent, pk)
+}
+
+func (conn *GorbManager) EntityPut(entity interface{}) (bool, error) {
+	if conn.db == nil {
+		return false, fmt.Errorf("Database connection is not set")
+	}
+
+	if pk == nil {
+		return false, fmt.Errorf("EntityGet: parameters cannot be nil")
+	}
+
+	var ent *Entity
+	if eType.Kind() == reflect.Ptr {
+		eType = eType.Elem()
+	}
+	ent = conn.LookupEntity(eType)
+	if ent == nil {
+		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
+	}
+
+	return nil, nil
 }

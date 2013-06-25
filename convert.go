@@ -198,6 +198,22 @@ func parseInt(value interface{}) (iVal int64, err error) {
 	return
 }
 
+func parseBlob(value interface{}) (blobVal []byte, err error) {
+	blobVal = nil
+	err = nil
+	switch src := value.(type) {
+	case []byte:
+		blobVal = src
+	case string:
+		blobVal = []byte(src)
+	default:
+		{
+			err = fmt.Errorf("Cannot convert to []byte: %v %T", src, src)
+		}
+	}
+	return
+}
+
 func (gs *gorbScanner) Scan(value interface{}) (err error) {
 	var iVal int64
 
@@ -363,6 +379,27 @@ func (gs *gorbScanner) Scan(value interface{}) (err error) {
 			}
 		}
 
+	case **[]byte:
+		{
+			if value == nil {
+				*dst = nil
+			} else {
+				if *dst == nil {
+					*dst = new([]byte)
+				}
+				//**dst, err = parseBlob(value)
+			}
+		}
+	case *[]byte:
+		{
+			if value == nil {
+				if len(*dst) > 0 {
+					(*dst) = nil
+				}
+			} else {
+				//*dst, err = parseBlob(value)
+			}
+		}
 	}
 	return err
 }

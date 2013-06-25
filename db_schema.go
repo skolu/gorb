@@ -53,7 +53,7 @@ func (su *SchemaUpgrader) GetSchemaForTable(t *Table) *TableSchema {
 		}
 		ts.Columns[i] = cs
 
-		if f == t.ParentKey || f.isIndex {
+		if (f == t.ParentKey && t.PrimaryKey != t.ParentKey) || f.isIndex {
 			var is *IndexSchema = new(IndexSchema)
 			is.Name = ""
 			is.Column = cs

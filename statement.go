@@ -50,7 +50,7 @@ func (t *Table) getInsertQuery() string {
 		if i > 0 {
 			buffer.WriteString(", ")
 		}
-		if f != t.PrimaryKey {
+		if f != t.PrimaryKey || f == t.ParentKey {
 			buffer.WriteString(f.sqlName)
 			i++
 		}
@@ -92,11 +92,23 @@ func (t *Table) getUpdateQuery() string {
 	return buffer.String()
 }
 
+func (t *Table) getRemoveQuery() string {
+	var fld *Field
+	if t.ParentKey == nil {
+		fld = t.PrimaryKey
+	} else {
+		fld = t.ParentKey
+	}
+	return fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, fld.sqlName)
+}
+
 func (t *Table) getDeleteQuery(tablePath []*Table) string {
 	var buffer bytes.Buffer
 
 	if len(tablePath) == 0 {
 		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, t.PrimaryKey.sqlName))
+	} else if len(tablePath) == 1 {
+		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, t.ParentKey.sqlName))
 	} else {
 		tables := append(tablePath, t)
 
