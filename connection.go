@@ -1,7 +1,6 @@
 package gorb
 
 import (
-	"bytes"
 	"database/sql"
 	"fmt"
 	"reflect"
@@ -28,104 +27,7 @@ type (
 	}
 )
 
-func (t *table) getSelectQuery(tablePath []*table) string {
-	var buffer bytes.Buffer
-
-	buffer.WriteString("SELECT ")
-	for i, f := range t.fields {
-		if i > 0 {
-			buffer.WriteString(", ")
-		}
-		buffer.WriteString(f.sqlName)
-	}
-	buffer.WriteString(" FROM ")
-	buffer.WriteString(t.tableName)
-	buffer.WriteString(" WHERE ")
-	if t.parentKey == nil {
-		buffer.WriteString(t.primaryKey.sqlName)
-	} else {
-		buffer.WriteString(t.parentKey.sqlName)
-	}
-	buffer.WriteString(" =?")
-
-	return buffer.String()
-}
-
-func (t *table) getInsertQuery() string {
-	var buffer bytes.Buffer
-
-	buffer.WriteString("INSERT INTO ")
-	buffer.WriteString(t.tableName)
-	buffer.WriteString("(")
-
-	i := 0
-	for _, f := range t.fields {
-		if i > 0 {
-			buffer.WriteString(", ")
-		}
-		if f != t.primaryKey {
-			buffer.WriteString(f.sqlName)
-			i++
-		}
-	}
-	buffer.WriteString(") VALUES (")
-	for j := 0; j < i; j++ {
-		if j > 0 {
-			buffer.WriteString(", ")
-		}
-		buffer.WriteString("?")
-	}
-	buffer.WriteString(")")
-
-	return buffer.String()
-}
-
-func (t *table) getUpdateQuery() string {
-	var buffer bytes.Buffer
-
-	buffer.WriteString("UPDATE ")
-	buffer.WriteString(t.tableName)
-	buffer.WriteString(" SET ")
-
-	i := 0
-	for _, f := range t.fields {
-		if i > 0 {
-			buffer.WriteString(", ")
-		}
-		if f != t.primaryKey {
-			i++
-			buffer.WriteString(f.sqlName)
-			buffer.WriteString("=?")
-		}
-	}
-	buffer.WriteString(" WHERE ")
-	buffer.WriteString(t.primaryKey.sqlName)
-	buffer.WriteString("=?")
-
-	return buffer.String()
-}
-
-func (t *table) getDeleteQuery(tablePath []*table) string {
-	var buffer bytes.Buffer
-
-	if len(tablePath) == 0 {
-		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.tableName, t.primaryKey.sqlName))
-	} else {
-		tables := append(tablePath, t)
-
-		buffer.WriteString(fmt.Sprintf("DELETE t%d FROM %s t%d", len(tables), t.tableName, len(tables)))
-		if len(tablePath) > 0 {
-			for i := len(tablePath) - 1; i > 0; i-- {
-				buffer.WriteString(fmt.Sprintf("INNER JOIN %s t%d ON t%d.%s = t%d.%s", tables[i-1].tableName, i, i, tables[i-1].primaryKey.sqlName, i, tables[i].parentKey.sqlName))
-			}
-		}
-		buffer.WriteString(fmt.Sprintf(" WHERE t1.%s = ?", tables[0].primaryKey.sqlName))
-	}
-
-	return buffer.String()
-}
-
-func (t *table) createStatements(db *sql.DB, tablePath []*table) (bool, error) {
+func (t *Table) createStatements(db *sql.DB, tablePath []*Table) (bool, error) {
 	stmts := new(tableStmts)
 	var e error
 	var res bool
@@ -165,7 +67,7 @@ func (t *table) createStatements(db *sql.DB, tablePath []*table) (bool, error) {
 	}
 	t.stmts = stmts
 
-	for _, child := range t.children {
+	for _, child := range t.Children {
 		res, e = child.createStatements(db, append(tablePath, t))
 		if !res {
 			return res, e
@@ -174,28 +76,28 @@ func (t *table) createStatements(db *sql.DB, tablePath []*table) (bool, error) {
 	return true, nil
 }
 
-func (t *table) populateChildren(row reflect.Value) (bool, error) {
-	if t.rowClass != row.Type() {
+func (t *Table) populateChildren(row reflect.Value) (bool, error) {
+	if t.RowClass != row.Type() {
 		return false, fmt.Errorf("populateChildren: row and schema mismatch")
 	}
 
 	var rowKey reflect.Value
-	rowKey = row.FieldByIndex(t.primaryKey.classIdx)
+	rowKey = row.FieldByIndex(t.PrimaryKey.classIdx)
 
-	for _, childTable := range t.children {
+	for _, childTable := range t.Children {
 		var e error
 		var rows *sql.Rows
 
-		childStorage := row.FieldByIndex(childTable.classIdx)
+		childStorage := row.FieldByIndex(childTable.ClassIdx)
 		if childStorage.IsNil() {
-			switch childTable.childClass.Kind() {
+			switch childTable.ChildClass.Kind() {
 			case reflect.Slice:
 				{
-					childStorage = reflect.MakeSlice(childTable.childClass, 0, 16)
+					childStorage = reflect.MakeSlice(childTable.ChildClass, 0, 16)
 				}
 			case reflect.Map:
 				{
-					childStorage = reflect.MakeMap(childTable.childClass)
+					childStorage = reflect.MakeMap(childTable.ChildClass)
 				}
 			}
 		}
@@ -205,14 +107,14 @@ func (t *table) populateChildren(row reflect.Value) (bool, error) {
 			return false, e
 		}
 		var flds []interface{}
-		flds = make([]interface{}, len(childTable.fields))
+		flds = make([]interface{}, len(childTable.Fields))
 		for rows.Next() {
 			var childRow reflect.Value
-			childRow = reflect.New(childTable.rowClass)
+			childRow = reflect.New(childTable.RowClass)
 
-			for i, f := range t.fields {
-				if f.fieldType.Kind() == reflect.Ptr {
-					ptrV := reflect.New(f.fieldType)
+			for i, f := range t.Fields {
+				if f.FieldType.Kind() == reflect.Ptr {
+					ptrV := reflect.New(f.FieldType)
 					fldV := childRow.FieldByIndex(f.classIdx)
 					fldV.Set(ptrV)
 					flds[i] = ptrV.Elem()
@@ -225,7 +127,7 @@ func (t *table) populateChildren(row reflect.Value) (bool, error) {
 				rows.Close()
 				return false, e
 			}
-			switch childTable.childClass.Kind() {
+			switch childTable.ChildClass.Kind() {
 			case reflect.Ptr:
 				{
 					childStorage.Set(childRow)
@@ -236,7 +138,7 @@ func (t *table) populateChildren(row reflect.Value) (bool, error) {
 				}
 			case reflect.Map:
 				{
-					childKey := childRow.FieldByIndex(childTable.primaryKey.classIdx)
+					childKey := childRow.FieldByIndex(childTable.PrimaryKey.classIdx)
 					childStorage.SetMapIndex(childKey, childRow)
 				}
 			}
@@ -252,6 +154,16 @@ func (t *table) populateChildren(row reflect.Value) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (t *Table) dumpQueries(tablePath []*Table) {
+	fmt.Printf("Select \"%s\": %s\n", t.TableName, t.getSelectQuery(tablePath))
+	for _, chld := range t.Children {
+		chld.dumpQueries(append(tablePath, t))
+	}
+}
+func (ent *Entity) DumpQueries() {
+	ent.dumpQueries(make([]*Table, 0, 8))
 }
 
 func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, error) {
@@ -277,15 +189,15 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 
 	var e error
 	var flds []interface{}
-	flds = make([]interface{}, len(ent.fields))
+	flds = make([]interface{}, len(ent.Fields))
 
 	rowValue := reflect.ValueOf(object)
 	if isPtr {
 		rowValue = rowValue.Elem()
 	}
-	for i, f := range ent.fields {
+	for i, f := range ent.Fields {
 		pV := rowValue.FieldByIndex(f.classIdx).Addr().Interface()
-		switch f.dataType {
+		switch f.DataType {
 		case Int32, Int64, Float, Bool, DateTime, String:
 			{
 				var gs gorbScanner
@@ -307,8 +219,8 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 	return ent.populateChildren(rowValue)
 }
 
-func (t *table) cascadeDelete(txn *sql.Tx, pk interface{}) error {
-	for _, child := range t.children {
+func (t *Table) cascadeDelete(txn *sql.Tx, pk interface{}) error {
+	for _, child := range t.Children {
 		child.cascadeDelete(txn, pk)
 	}
 	stmt := txn.Stmt(t.stmts.stmtDelete)

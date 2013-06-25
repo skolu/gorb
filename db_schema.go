@@ -37,23 +37,23 @@ type (
 	}
 )
 
-func (su *SchemaUpgrader) GetSchemaForTable(t *table) *TableSchema {
+func (su *SchemaUpgrader) GetSchemaForTable(t *Table) *TableSchema {
 	var ts *TableSchema = new(TableSchema)
-	ts.Name = t.tableName
-	ts.Columns = make([]*ColumnSchema, len(t.fields))
+	ts.Name = t.TableName
+	ts.Columns = make([]*ColumnSchema, len(t.Fields))
 	ts.Indice = make([]*IndexSchema, 0, 8)
-	for i, f := range t.fields {
+	for i, f := range t.Fields {
 		cs := new(ColumnSchema)
 		cs.Name = f.sqlName
-		cs.Type = f.dataType
+		cs.Type = f.DataType
 		cs.IsNull = f.isNullable
 		cs.Precision = f.precision
-		if f == t.primaryKey {
+		if f == t.PrimaryKey {
 			ts.PrimaryKey = cs
 		}
 		ts.Columns[i] = cs
 
-		if f == t.parentKey || f.isIndex {
+		if f == t.ParentKey || f.isIndex {
 			var is *IndexSchema = new(IndexSchema)
 			is.Name = ""
 			is.Column = cs
@@ -72,7 +72,7 @@ func (su *SchemaUpgrader) UpgradeEntity(ent *Entity) error {
 	for _, t := range tables {
 		var dbSchema *TableSchema
 		var classSchema *TableSchema
-		dbSchema, e = su.SqlDmlDriver.ReadTableSchema(t.tableName)
+		dbSchema, e = su.SqlDmlDriver.ReadTableSchema(t.TableName)
 		classSchema = su.GetSchemaForTable(t)
 
 		if e == nil { // upgrade
@@ -85,7 +85,7 @@ func (su *SchemaUpgrader) UpgradeEntity(ent *Entity) error {
 					}
 				}
 				if !found {
-					e = su.SqlDmlDriver.AlterTableAddColumn(t.tableName, fsc)
+					e = su.SqlDmlDriver.AlterTableAddColumn(t.TableName, fsc)
 					if e != nil {
 						return e
 					}
@@ -101,7 +101,7 @@ func (su *SchemaUpgrader) UpgradeEntity(ent *Entity) error {
 					}
 				}
 				if !found {
-					e = su.SqlDmlDriver.AlterTableAddIndex(t.tableName, isc)
+					e = su.SqlDmlDriver.AlterTableAddIndex(t.TableName, isc)
 					if e != nil {
 						return e
 					}
