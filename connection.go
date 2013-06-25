@@ -269,7 +269,7 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 		eType = eType.Elem()
 	}
 
-	var ent *entity
+	var ent *Entity
 	ent = conn.LookupEntity(eType)
 	if ent == nil {
 		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
@@ -286,7 +286,7 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 	for i, f := range ent.fields {
 		pV := rowValue.FieldByIndex(f.classIdx).Addr().Interface()
 		switch f.dataType {
-		case Integer, Float, Bool, DateTime, String:
+		case Int32, Int64, Float, Bool, DateTime, String:
 			{
 				var gs gorbScanner
 				gs.ptr = pV
@@ -316,7 +316,7 @@ func (t *table) cascadeDelete(txn *sql.Tx, pk interface{}) error {
 	return e
 }
 
-func (conn *GorbManager) deleteEntity(ent *entity, pk interface{}) (bool, error) {
+func (conn *GorbManager) deleteEntity(ent *Entity, pk interface{}) (bool, error) {
 	var e error
 	txn, e := conn.db.Begin()
 	if e != nil {
@@ -340,7 +340,7 @@ func (conn *GorbManager) EntityDelete(eType reflect.Type, pk interface{}) (bool,
 		return false, fmt.Errorf("EntityGet: parameters cannot be nil")
 	}
 
-	var ent *entity
+	var ent *Entity
 	if eType.Kind() == reflect.Ptr {
 		eType = eType.Elem()
 	}

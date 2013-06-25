@@ -1,16 +1,9 @@
 package gorb
 
-import (
-	"bytes"
-	"database/sql"
-	"fmt"
-	"regexp"
-	"strconv"
-	"strings"
-)
+import ()
 
 type (
-	DbSchemaUpgrade interface {
+	DbSchemaUpgrader interface {
 		GetVersion() int
 		ReadTableSchema(tableName string) (*TableSchema, error)
 		CreateTable(schema *TableSchema) error
@@ -22,7 +15,7 @@ type (
 		Name      string
 		Type      DataType
 		IsNull    bool
-		Precision int32
+		Precision uint16
 	}
 	IndexSchema struct {
 		Name     string
@@ -32,229 +25,95 @@ type (
 	TableSchema struct {
 		Name       string
 		PrimaryKey *ColumnSchema
+		ForeignKey *ColumnSchema
 		Columns    []*ColumnSchema
 		Indice     []*IndexSchema
 	}
 )
 
 type (
-	MySqlSchemaUpgrade struct {
-		Db *sql.DB
+	SchemaUpgrader struct {
+		SqlDmlDriver DbSchemaUpgrader
 	}
 )
 
-func (u *MySqlSchemaUpgrade) GetVersion() int {
-	return -1
+func (su *SchemaUpgrader) GetSchemaForTable(t *table) *TableSchema {
+	var ts *TableSchema = new(TableSchema)
+	ts.Name = t.tableName
+	ts.Columns = make([]*ColumnSchema, len(t.fields))
+	ts.Indice = make([]*IndexSchema, 0, 8)
+	for i, f := range t.fields {
+		cs := new(ColumnSchema)
+		cs.Name = f.sqlName
+		cs.Type = f.dataType
+		cs.IsNull = f.isNullable
+		cs.Precision = f.precision
+		if f == t.primaryKey {
+			ts.PrimaryKey = cs
+		}
+		ts.Columns[i] = cs
+
+		if f == t.parentKey || f.isIndex {
+			var is *IndexSchema = new(IndexSchema)
+			is.Name = ""
+			is.Column = cs
+			is.IsUnique = false
+
+			ts.Indice = append(ts.Indice, is)
+		}
+	}
+
+	return ts
 }
 
-func MySqlColumnType(columnType string) (dataType DataType, precision int32) {
-	columnType = strings.ToLower(columnType)
-	dataType = Unsupported
-	precision = 0
+func (su *SchemaUpgrader) UpgradeEntity(ent *Entity) error {
+	var e error
+	tables := ent.Flatten()
+	for _, t := range tables {
+		var dbSchema *TableSchema
+		var classSchema *TableSchema
+		dbSchema, e = su.SqlDmlDriver.ReadTableSchema(t.tableName)
+		classSchema = su.GetSchemaForTable(t)
 
-	if strings.HasPrefix(columnType, "varchar") {
-		dataType = String
-	}
-	if strings.HasPrefix(columnType, "int") {
-		dataType = Integer
-		precision = 32
-	}
-	if strings.HasPrefix(columnType, "bigint") {
-		dataType = Integer
-		precision = 64
-	}
-	if strings.HasPrefix(columnType, "tinyint") {
-		dataType = Bool
-	}
-	if strings.HasPrefix(columnType, "bit") {
-		dataType = Bool
-	}
-	if strings.HasPrefix(columnType, "char") {
-		dataType = String
-	}
-	if strings.HasPrefix(columnType, "decimal") {
-		dataType = Float
-	}
-	if strings.HasPrefix(columnType, "real") {
-		dataType = Float
-	}
-	if strings.HasPrefix(columnType, "double") {
-		dataType = Float
-	}
-	if strings.HasPrefix(columnType, "numeric") {
-		dataType = Float
-	}
-	if strings.HasPrefix(columnType, "date") {
-		dataType = DateTime
-	}
-	if strings.HasPrefix(columnType, "timestamp") {
-		dataType = DateTime
-	}
-	if strings.HasPrefix(columnType, "datetime") {
-		dataType = DateTime
-	}
-	if strings.HasSuffix(columnType, "blob") {
-		dataType = Blob
-	}
-	if strings.HasPrefix(columnType, "text") {
-		dataType = String
-	}
-	if strings.HasPrefix(columnType, "tinytext") {
-		dataType = String
-	}
-	if strings.HasPrefix(columnType, "mediumtext") {
-		dataType = String
-	}
-	if strings.HasPrefix(columnType, "longtext") {
-		dataType = String
-	}
-
-	if dataType == String {
-		re, e := regexp.Compile(".*\\((.+)\\).*")
-		if e == nil {
-			matches := re.FindStringSubmatch(columnType)
-			if len(matches) > 1 {
-				var i int64
-				i, e = strconv.ParseInt(matches[1], 10, 32)
-				if e == nil {
-					precision = int32(i)
+		if e == nil { // upgrade
+			for _, fsc := range classSchema.Columns {
+				found := false
+				for _, fsdb := range dbSchema.Columns {
+					if fsc.Name == fsdb.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					e = su.SqlDmlDriver.AlterTableAddColumn(t.tableName, fsc)
+					if e != nil {
+						return e
+					}
 				}
 			}
-		}
-	}
 
-	return
-}
-
-func MySqlColumnDefinition(col *ColumnSchema) string {
-	var typeDef []string = make([]string, 3)
-	typeDef[0] = col.Name
-
-	switch col.Type {
-	case Bool:
-		typeDef[1] = "Bit"
-	case Integer:
-		if col.Precision > 0 && col.Precision <= 32 {
-			typeDef[1] = "Integer"
-
-		} else {
-			typeDef[1] = "BigInt"
-		}
-	case Float:
-		typeDef[1] = "Double"
-	case String:
-		if col.Precision > 0 {
-			typeDef[1] = fmt.Sprintf("VarChar(%d)", col.Precision)
-		} else {
-			typeDef[1] = "Text"
-		}
-	case DateTime:
-		typeDef[1] = "TimeStamp"
-	case Blob:
-		typeDef[1] = "Blob"
-
-	}
-	if col.IsNull {
-		typeDef[2] = "Null"
-	} else {
-		typeDef[2] = "Not Null"
-	}
-	return strings.Join(typeDef, " ")
-}
-
-func (u *MySqlSchemaUpgrade) ReadTableSchema(tableName string) (*TableSchema, error) {
-	if u.Db == nil {
-		return nil, fmt.Errorf("MySqlShemaUpgrade: Connection has not been set")
-	}
-
-	var rows *sql.Rows
-	var e error
-
-	//| Field       | Type                | Null | Key | Default             | Extra                       |
-	rows, e = u.Db.Query(fmt.Sprintf("Show Columns From %s;", tableName))
-	if e != nil {
-		return nil, e
-	}
-	var tableSchema *TableSchema = new(TableSchema)
-	var cs *ColumnSchema
-	tableSchema.Name = tableName
-
-	tableSchema.Columns = make([]*ColumnSchema, 0, 32)
-	for rows.Next() {
-		cs = new(ColumnSchema)
-		var columnType, columnNull, columnKey string
-		var columnDefault, columnExtra *string
-
-		e = rows.Scan(&cs.Name, &columnType, &columnNull, &columnKey, &columnDefault, &columnExtra)
-		if e != nil {
-			return nil, e
-		}
-		if len(columnKey) > 0 {
-			switch columnKey {
-			case "PRI":
-				tableSchema.PrimaryKey = cs
+			for _, isc := range classSchema.Indice {
+				found := false
+				for _, isdb := range dbSchema.Indice {
+					if isc.Column.Name == isdb.Column.Name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					e = su.SqlDmlDriver.AlterTableAddIndex(t.tableName, isc)
+					if e != nil {
+						return e
+					}
+				}
 			}
-		}
-		cs.Type, cs.Precision = MySqlColumnType(columnType)
-
-		cs.IsNull, e = strconv.ParseBool(columnNull)
-		if e != nil {
-			if columnNull == "YES" {
-				cs.IsNull = true
-			}
-		}
-		tableSchema.Columns = append(tableSchema.Columns, cs)
-	}
-
-	rows, e = u.Db.Query(fmt.Sprintf("Show Index From %s Where Seq_In_Index=1;", tableName))
-	if e != nil {
-		return nil, e
-	}
-	//| Table | Non_unique | Key_name | Seq_in_index | Column_name | Collation | Cardinality | Sub_part | Packed | Null | Index_type | Comment | Index_comment |
-	tableSchema.Indice = make([]*IndexSchema, 0, 32)
-	for rows.Next() {
-		var tabName, columnName string
-		var seqNo int
-		var skip *string
-		is := new(IndexSchema)
-		e = rows.Scan(&tabName, &is.IsUnique, &is.Name, &seqNo, &columnName, &skip, &skip, &skip, &skip, &skip, &skip, &skip, &skip)
-		if e != nil {
-			return nil, e
-		}
-		var col *ColumnSchema
-		for _, col = range tableSchema.Columns {
-			if col.Name == columnName {
-				is.Column = col
-				break
-			}
-		}
-		if is.Column != nil {
-			if is.Column != tableSchema.PrimaryKey {
-				tableSchema.Indice = append(tableSchema.Indice, is)
+		} else { // create
+			e = su.SqlDmlDriver.CreateTable(classSchema)
+			if e != nil {
+				return e
 			}
 		}
 	}
-
-	return tableSchema, nil
-}
-
-func (u *MySqlSchemaUpgrade) CreateTableSchema(schema *TableSchema) error {
-	if u.Db == nil {
-		return fmt.Errorf("MySqlShemaUpgrade: Connection has not been set")
-	}
-	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("Create Table %s (\n", schema.Name))
-	for _, col := range schema.Columns {
-		if col == schema.PrimaryKey {
-			buffer.WriteString(fmt.Sprintf("\t%s %s,\n", col.Name, "SERIAL"))
-		} else {
-			buffer.WriteString(fmt.Sprintf("\t%s,\n", MySqlColumnDefinition(col)))
-		}
-	}
-
-	buffer.WriteString(fmt.Sprintf("\tPrimary Key(%s)\n);", schema.PrimaryKey.Name))
-
-	fmt.Println(buffer.String())
 
 	return nil
 }

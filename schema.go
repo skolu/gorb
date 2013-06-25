@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -14,7 +15,8 @@ type DataType uint
 const (
 	Unsupported DataType = iota
 	Bool
-	Integer
+	Int32
+	Int64
 	Float
 	DateTime
 	String
@@ -24,16 +26,19 @@ const (
 	TagPrefix string = "gorb"
 	TagPK     string = "pk"    // field: primary key
 	TagFK     string = "fk"    // field: foreign key
-	TagIndex  string = "index" // field: ???
+	TagIndex  string = "index" // field: index
+	TagNull   string = "null"  // field: field accepts null
 )
 
 type (
 	field struct {
-		dataType  DataType
-		fieldType reflect.Type
-		sqlName   string
-		isIndex   bool
-		classIdx  []int
+		dataType   DataType
+		fieldType  reflect.Type
+		sqlName    string
+		precision  uint16
+		isIndex    bool
+		isNullable bool
+		classIdx   []int
 	}
 
 	table struct {
@@ -52,7 +57,7 @@ type (
 		childClass reflect.Type
 	}
 
-	entity struct {
+	Entity struct {
 		table
 		tokenField   *field
 		teenantField *field
@@ -66,7 +71,7 @@ type (
 	}
 
 	GorbManager struct {
-		entities map[reflect.Type]*entity
+		entities map[reflect.Type]*Entity
 		names    map[string]reflect.Type
 		db       *sql.DB
 	}
@@ -95,10 +100,11 @@ func getPrimitiveDataType(t reflect.Type) DataType {
 		return Bool
 	case reflect.Uint8, reflect.Uint16, reflect.Int8, reflect.Int16:
 		fmt.Printf("short integer fields are not supported")
-	case reflect.Uint, reflect.Uint32, reflect.Uint64:
-		return Integer
-	case reflect.Int, reflect.Int32, reflect.Int64:
-		return Integer
+
+	case reflect.Int, reflect.Uint, reflect.Int64, reflect.Uint64:
+		return Int64
+	case reflect.Int32, reflect.Uint32:
+		return Int32
 	case reflect.Float32, reflect.Float64:
 		return Float
 	case reflect.String:
@@ -153,7 +159,7 @@ func (t *table) printGorbSchema() {
 		}
 		var ft string
 		switch fld.dataType {
-		case Bool, Integer:
+		case Bool, Int32, Int64:
 			ft = "INTEGER"
 		case String:
 			ft = "TEXT"
@@ -167,7 +173,7 @@ func (t *table) printGorbSchema() {
 		fmt.Printf("\t%s\t%s", fld.sqlName, ft)
 		if t.primaryKey == fld {
 			fmt.Print(" PRIMARY KEY")
-			if fld.dataType == Integer {
+			if fld.dataType == Int64 || fld.dataType == Int32 {
 				fmt.Print(" AUTOINCREMENT")
 			}
 		} else {
@@ -202,7 +208,7 @@ func (t *table) extractGorbSchema(class reflect.Type, path []int) (bool, error) 
 		if len(gorbTag) > 0 {
 			props := strings.Split(gorbTag, ",")
 			if len(props) == 0 {
-				return false, errors.New(fmt.Sprintf("Invalid GORB tag for field: %s", ft.Name))
+				return false, fmt.Errorf("Invalid GORB tag for field: %s", ft.Name)
 			}
 			dataType := getPrimitiveDataType(ft.Type)
 			if dataType != Unsupported {
@@ -215,27 +221,32 @@ func (t *table) extractGorbSchema(class reflect.Type, path []int) (bool, error) 
 				for i := 1; i < len(props); i++ {
 					prop := strings.TrimSpace(props[i])
 					prop = strings.ToLower(prop)
-					switch prop {
-					case "pk":
-						{
-							if t.primaryKey != nil {
-								return false, errors.New(fmt.Sprintf("Duplicate primary key definition"))
-							}
-							t.primaryKey = fld
-						}
-					case "fk":
-						{
-							if t.parentKey != nil {
-								return false, errors.New(fmt.Sprintf("Duplicate parent key definition"))
-							}
-							t.parentKey = fld
-						}
-					case "index":
-						fld.isIndex = true
-					default:
-						return false, errors.New(fmt.Sprintf("Unsupported field property: %s", prop))
 
+					if prop == "pk" {
+						if t.primaryKey != nil {
+							return false, fmt.Errorf("Duplicate primary key definition")
+						}
+						t.primaryKey = fld
+					} else if prop == "fk" {
+						if t.parentKey != nil {
+							return false, fmt.Errorf("Duplicate parent key definition")
+						}
+						t.parentKey = fld
+					} else if prop == "index" {
+						fld.isIndex = true
+					} else if prop == "null" {
+						fld.isNullable = true
+					} else if strings.HasPrefix(prop, ":") {
+						i16, e := strconv.ParseInt(prop[1:], 10, 16)
+						if e == nil {
+							fld.precision = uint16(i16)
+						}
+					} else {
+						return false, fmt.Errorf("Unsupported field property: %s", prop)
 					}
+				}
+				if fld.fieldType.Kind() == reflect.Ptr {
+					fld.isNullable = true
 				}
 				t.fields = append(t.fields, fld)
 			} else {
@@ -278,6 +289,18 @@ func (t *table) extractGorbSchema(class reflect.Type, path []int) (bool, error) 
 	return true, nil
 }
 
+func (t *table) flatten(path []*table) []*table {
+	path = append(path, t)
+	for _, child := range t.children {
+		path = child.flatten(path)
+	}
+
+	return path
+}
+func (ent *Entity) Flatten() []*table {
+	return ent.table.flatten(make([]*table, 0, 16))
+}
+
 func (mgr *GorbManager) PrintGorbSchema(class reflect.Type) {
 	ent := mgr.entities[class]
 	if ent != nil {
@@ -287,7 +310,7 @@ func (mgr *GorbManager) PrintGorbSchema(class reflect.Type) {
 	}
 }
 
-func (mgr *GorbManager) LookupEntity(class reflect.Type) *entity {
+func (mgr *GorbManager) LookupEntity(class reflect.Type) *Entity {
 	if mgr.entities != nil {
 		return mgr.entities[class]
 	}
@@ -298,23 +321,23 @@ func (mgr *GorbManager) LookupEntityType(tableName string) reflect.Type {
 	return mgr.names[tableName]
 }
 
-func (mgr *GorbManager) RegisterEntity(class reflect.Type, tableName string) (bool, error) {
+func (mgr *GorbManager) RegisterEntity(class reflect.Type, tableName string) (*Entity, error) {
 	if class.Kind() != reflect.Struct {
-		return false, errors.New(fmt.Sprintf("Invalid Gorb entity type: %s. Struct expected", class.Name()))
+		return nil, errors.New(fmt.Sprintf("Invalid Gorb entity type: %s. Struct expected", class.Name()))
 	}
 	var ok bool
 	if mgr.entities != nil {
 		if _, ok = mgr.entities[class]; ok {
-			return false, errors.New(fmt.Sprintf("Type %s is already registered.", class.Name()))
+			return nil, errors.New(fmt.Sprintf("Type %s is already registered.", class.Name()))
 		}
 	}
 	if mgr.names != nil {
 		if _, ok = mgr.names[tableName]; ok {
-			return false, errors.New(fmt.Sprintf("SQL entity %s is already registered.", tableName))
+			return nil, errors.New(fmt.Sprintf("SQL entity %s is already registered.", tableName))
 		}
 	}
 
-	e := new(entity)
+	e := new(Entity)
 	e.init()
 	e.tableName = tableName
 	e.rowClass = class
@@ -323,7 +346,7 @@ func (mgr *GorbManager) RegisterEntity(class reflect.Type, tableName string) (bo
 		res, err = e.check()
 		if res {
 			if mgr.entities == nil {
-				mgr.entities = make(map[reflect.Type]*entity, 16)
+				mgr.entities = make(map[reflect.Type]*Entity, 16)
 			}
 			if mgr.names == nil {
 				mgr.names = make(map[string]reflect.Type, 16)
@@ -333,7 +356,7 @@ func (mgr *GorbManager) RegisterEntity(class reflect.Type, tableName string) (bo
 		}
 	}
 
-	return res, err
+	return e, err
 }
 
 func (mgr *GorbManager) EntityByType(class reflect.Type) (interface{}, error) {
