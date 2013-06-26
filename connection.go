@@ -8,9 +8,11 @@ import (
 
 type (
 	tableStmts struct {
+		stmtInfo   *sql.Stmt
 		stmtSelect *sql.Stmt
 		stmtInsert *sql.Stmt
 		stmtUpdate *sql.Stmt
+		stmtRemove *sql.Stmt
 		stmtDelete *sql.Stmt
 	}
 )
@@ -19,63 +21,131 @@ const (
 	timeFormat = "2006-01-02 15:04:05"
 )
 
-func (t *Table) dumpQueries(tablePath []*Table) {
-	fmt.Printf("Select \"%s\": %s\n", t.TableName, t.getSelectQuery(tablePath))
-	for _, chld := range t.Children {
-		chld.dumpQueries(append(tablePath, t))
+func (c *ChildTable) dumpChildQueries(tablePath []*ChildTable) {
+	fmt.Printf("Select \"%s\": %s\n", c.TableName, c.getSelectQuery(tablePath))
+	fmt.Printf("Delete \"%s\": %s\n", c.TableName, c.getDeleteQuery(tablePath))
+	for _, chld := range c.Children {
+		chld.dumpChildQueries(append(tablePath, c))
 	}
 }
-func (ent *Entity) DumpQueries() {
-	ent.dumpQueries(make([]*Table, 0, 8))
+func (e *Entity) DumpQueries() {
+	fmt.Printf("Select \"%s\": %s\n", e.TableName, e.getSelectQuery())
+	fmt.Printf("Delete \"%s\": %s\n", e.TableName, e.getDeleteQuery())
+
+	for _, chld := range e.Children {
+		chld.dumpChildQueries([]*ChildTable{})
+	}
 }
 
-func (t *Table) createStatements(db *sql.DB, tablePath []*Table) (bool, error) {
+func (stmts *tableStmts) releaseStatements() {
+	if stmts.stmtInfo != nil {
+		stmts.stmtInfo.Close()
+		stmts.stmtInfo = nil
+	}
+	if stmts.stmtSelect != nil {
+		stmts.stmtSelect.Close()
+		stmts.stmtSelect = nil
+	}
+	if stmts.stmtInsert != nil {
+		stmts.stmtInsert.Close()
+		stmts.stmtInsert = nil
+	}
+	if stmts.stmtUpdate != nil {
+		stmts.stmtUpdate.Close()
+		stmts.stmtUpdate = nil
+	}
+	if stmts.stmtRemove != nil {
+		stmts.stmtRemove.Close()
+		stmts.stmtRemove = nil
+	}
+	if stmts.stmtDelete != nil {
+		stmts.stmtDelete.Close()
+		stmts.stmtDelete = nil
+	}
+}
+
+func (c *ChildTable) createStatements(db *sql.DB, tablePath []*ChildTable) error {
 	stmts := new(tableStmts)
-	var e error
-	var res bool
-	var s *sql.Stmt
+	var e error = nil
 
-	s, e = db.Prepare(t.getSelectQuery(tablePath))
-	if s == nil {
-		return false, e
+	if e == nil {
+		stmts.stmtSelect, e = db.Prepare(c.getInfoQuery(tablePath))
 	}
-	stmts.stmtSelect = s
-
-	s, e = db.Prepare(t.getInsertQuery())
-	if s == nil {
-		return false, e
+	if e == nil {
+		stmts.stmtSelect, e = db.Prepare(c.getSelectQuery(tablePath))
 	}
-	stmts.stmtInsert = s
-
-	s, e = db.Prepare(t.getUpdateQuery())
-	if s == nil {
-		return false, e
+	if e == nil {
+		stmts.stmtInsert, e = db.Prepare(c.getInsertQuery())
 	}
-	stmts.stmtUpdate = s
-
-	s, e = db.Prepare(t.getDeleteQuery(tablePath))
-	if s == nil {
-		return false, e
+	if e == nil {
+		stmts.stmtUpdate, e = db.Prepare(c.getUpdateQuery())
 	}
-	stmts.stmtDelete = s
-
-	if t.stmts != nil {
-		t.stmts.stmtSelect.Close()
-		t.stmts.stmtInsert.Close()
-		t.stmts.stmtUpdate.Close()
-		t.stmts.stmtDelete.Close()
-
-		t.stmts = nil
+	if e == nil {
+		stmts.stmtRemove, e = db.Prepare(c.getRemoveQuery())
 	}
-	t.stmts = stmts
+	if e == nil {
+		stmts.stmtDelete, e = db.Prepare(c.getDeleteQuery(tablePath))
+	}
+	if e != nil {
+		stmts.releaseStatements()
+		return e
+	}
 
-	for _, child := range t.Children {
-		res, e = child.createStatements(db, append(tablePath, t))
-		if !res {
-			return res, e
+	if c.stmts != nil {
+		c.stmts.releaseStatements()
+		c.stmts = nil
+	}
+	c.stmts = stmts
+
+	for _, child := range c.Children {
+		e = child.createStatements(db, append(tablePath, c))
+		if e != nil {
+			return e
 		}
 	}
-	return true, nil
+	return nil
+}
+
+func (entity *Entity) createStatements(db *sql.DB) error {
+	stmts := new(tableStmts)
+	var e error = nil
+
+	if e == nil {
+		stmts.stmtSelect, e = db.Prepare(entity.getInfoQuery())
+	}
+	if e == nil {
+		stmts.stmtSelect, e = db.Prepare(entity.getSelectQuery())
+	}
+	if e == nil {
+		stmts.stmtInsert, e = db.Prepare(entity.getInsertQuery())
+	}
+	if e == nil {
+		stmts.stmtUpdate, e = db.Prepare(entity.getUpdateQuery())
+	}
+	if e == nil {
+		stmts.stmtRemove, e = db.Prepare(entity.getRemoveQuery())
+	}
+	if e == nil {
+		stmts.stmtDelete, e = db.Prepare(entity.getDeleteQuery())
+	}
+	if e != nil {
+		stmts.releaseStatements()
+		return e
+	}
+
+	if entity.stmts != nil {
+		entity.stmts.releaseStatements()
+		entity.stmts = nil
+	}
+	entity.stmts = stmts
+
+	for _, child := range entity.Children {
+		e = child.createStatements(db, []*ChildTable{})
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 func (t *Table) populateChildren(row reflect.Value) (bool, error) {
@@ -173,15 +243,13 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 		eType = eType.Elem()
 	}
 
-	var ent *Entity
-	ent = conn.LookupEntity(eType)
+	var ent *Entity = conn.LookupEntity(eType)
 	if ent == nil {
 		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
 	}
 
 	var e error
-	var flds []interface{}
-	flds = make([]interface{}, len(ent.Fields))
+	var flds []interface{} = make([]interface{}, len(ent.Fields))
 
 	rowValue := reflect.ValueOf(object)
 	if isPtr {

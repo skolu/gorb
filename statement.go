@@ -5,20 +5,58 @@ import (
 	"fmt"
 )
 
-func (t *Table) getSelectQuery(tablePath []*Table) string {
+func (c *ChildTable) getInfoQuery(tablePath []*ChildTable) string {
+	if len(tablePath) == 0 {
+		return fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", c.PrimaryKey.sqlName, c.TableName, c.ParentKey.sqlName)
+	}
+
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("SELECT t%d.%s FROM %s t%d", c.tableNo, c.PrimaryKey.sqlName, c.TableName, c.tableNo))
+
+	fullPath := append(tablePath, c)
+	for i := len(fullPath) - 2; i >= 0; i-- {
+		t1 := fullPath[i]
+		t2 := fullPath[i+1]
+		buffer.WriteString(fmt.Sprintf(" INNER JOIN %s t%d ON t%d.%s = t%d.%s", t1.TableName, t1.tableNo, t1.tableNo, t1.PrimaryKey.sqlName, t2.tableNo, t2.ParentKey.sqlName))
+	}
+
+	buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", tablePath[0].tableNo, tablePath[0].ParentKey.sqlName))
+
+	return buffer.String()
+}
+
+func (e *Entity) getInfoQuery() string {
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("SELECT %s", e.PrimaryKey.sqlName))
+	if e.TokenField != nil {
+		buffer.WriteString(fmt.Sprintf(", %s", e.TokenField.sqlName))
+	} else {
+		buffer.WriteString(", 0")
+	}
+	if e.TeenantField != nil {
+		buffer.WriteString(fmt.Sprintf(", %s", e.TeenantField.sqlName))
+	} else {
+		buffer.WriteString(", 0")
+	}
+	buffer.WriteString(fmt.Sprintf(" FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.sqlName))
+
+	return buffer.String()
+}
+
+func (c *ChildTable) getSelectQuery(tablePath []*ChildTable) string {
 	var buffer bytes.Buffer
 
 	buffer.WriteString("SELECT ")
-	for i, f := range t.Fields {
+	for i, f := range c.Fields {
 		if i > 0 {
 			buffer.WriteString(", ")
 		}
-		buffer.WriteString(fmt.Sprintf("t%d.%s", t.tableNo, f.sqlName))
+		buffer.WriteString(fmt.Sprintf("t%d.%s", c.tableNo, f.sqlName))
 	}
 
-	buffer.WriteString(fmt.Sprintf(" FROM %s t%d ", t.TableName, t.tableNo))
+	buffer.WriteString(fmt.Sprintf(" FROM %s t%d ", c.TableName, c.tableNo))
 	if len(tablePath) > 1 {
-		fullPath := append(tablePath, t)
+		fullPath := append(tablePath, c)
 		for i := len(fullPath) - 2; i >= 1; i-- {
 			t1 := fullPath[i]
 			t2 := fullPath[i+1]
@@ -26,31 +64,70 @@ func (t *Table) getSelectQuery(tablePath []*Table) string {
 		}
 		buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", tablePath[1].tableNo, tablePath[1].ParentKey.sqlName))
 	} else {
-		var fld *Field
-		if len(tablePath) == 0 {
-			fld = t.PrimaryKey
-		} else {
-			fld = t.ParentKey
-		}
-		buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", t.tableNo, fld.sqlName))
+		buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", c.tableNo, c.ParentKey.sqlName))
 	}
 
 	return buffer.String()
 }
 
-func (t *Table) getInsertQuery() string {
+func (e *Entity) getSelectQuery() string {
 	var buffer bytes.Buffer
 
-	buffer.WriteString("INSERT INTO ")
-	buffer.WriteString(t.TableName)
-	buffer.WriteString("(")
-
-	i := 0
-	for _, f := range t.Fields {
+	buffer.WriteString("SELECT ")
+	for i, f := range e.Fields {
 		if i > 0 {
 			buffer.WriteString(", ")
 		}
-		if f != t.PrimaryKey || f == t.ParentKey {
+		buffer.WriteString(f.sqlName)
+	}
+
+	buffer.WriteString(fmt.Sprintf(" FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.sqlName))
+
+	return buffer.String()
+}
+
+func (c *ChildTable) getInsertQuery() string {
+	var buffer bytes.Buffer
+
+	buffer.WriteString("INSERT INTO ")
+	buffer.WriteString(c.TableName)
+	buffer.WriteString("(")
+
+	i := 0
+	for _, f := range c.Fields {
+		if i > 0 {
+			buffer.WriteString(", ")
+		}
+		if f != c.PrimaryKey || f == c.ParentKey {
+			buffer.WriteString(f.sqlName)
+			i++
+		}
+	}
+	buffer.WriteString(") VALUES (")
+	for j := 0; j < i; j++ {
+		if j > 0 {
+			buffer.WriteString(", ")
+		}
+		buffer.WriteString("?")
+	}
+	buffer.WriteString(")")
+
+	return buffer.String()
+}
+
+func (e *Entity) getInsertQuery() string {
+	var buffer bytes.Buffer
+
+	buffer.WriteString("INSERT INTO ")
+	buffer.WriteString(e.TableName)
+	buffer.WriteString("(")
+
+	i := 0
+	for _, f := range e.Fields {
+		if i > 0 {
+			buffer.WriteString(", ")
+		}
+		if f != e.PrimaryKey {
 			buffer.WriteString(f.sqlName)
 			i++
 		}
@@ -93,33 +170,37 @@ func (t *Table) getUpdateQuery() string {
 }
 
 func (t *Table) getRemoveQuery() string {
-	var fld *Field
-	if t.ParentKey == nil {
-		fld = t.PrimaryKey
-	} else {
-		fld = t.ParentKey
-	}
-	return fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, fld.sqlName)
+	return fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, t.PrimaryKey.sqlName)
 }
 
-func (t *Table) getDeleteQuery(tablePath []*Table) string {
+func (c *ChildTable) getDeleteQuery(tablePath []*ChildTable) string {
 	var buffer bytes.Buffer
 
 	if len(tablePath) == 0 {
-		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, t.PrimaryKey.sqlName))
-	} else if len(tablePath) == 1 {
-		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, t.ParentKey.sqlName))
+		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", c.TableName, c.ParentKey.sqlName))
 	} else {
-		tables := append(tablePath, t)
+		open := 1
+		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s IN (", c.TableName, c.ParentKey.sqlName))
+		for i := len(tablePath) - 1; i >= 1; i-- {
+			tbl := tablePath[i]
+			if i > 1 {
+				open++
+				buffer.WriteString(fmt.Sprintf("SELECT %s FROM %s WHERE %s IN (", tbl.PrimaryKey.sqlName, tbl.TableName, tbl.ParentKey.sqlName))
 
-		buffer.WriteString(fmt.Sprintf("DELETE t%d FROM %s t%d", len(tables), t.TableName, len(tables)))
-		if len(tablePath) > 0 {
-			for i := len(tablePath) - 1; i > 0; i-- {
-				buffer.WriteString(fmt.Sprintf("INNER JOIN %s t%d ON t%d.%s = t%d.%s", tables[i-1].TableName, i, i, tables[i-1].PrimaryKey.sqlName, i, tables[i].ParentKey.sqlName))
+			} else {
+				buffer.WriteString(fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", tbl.PrimaryKey.sqlName, tbl.TableName, tbl.ParentKey.sqlName))
 			}
+
 		}
-		buffer.WriteString(fmt.Sprintf(" WHERE t1.%s = ?", tables[0].PrimaryKey.sqlName))
+		for open > 0 {
+			buffer.WriteString(")")
+			open--
+		}
 	}
 
 	return buffer.String()
+}
+
+func (e *Entity) getDeleteQuery() string {
+	return fmt.Sprintf("DELETE FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.sqlName)
 }

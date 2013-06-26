@@ -19,6 +19,10 @@ const (
 )
 
 type (
+	FieldPropertyParser interface {
+		ParseFieldProperty(property string, field *Field) error
+	}
+
 	Field struct {
 		DataType   DataType
 		FieldType  reflect.Type
@@ -33,7 +37,6 @@ type (
 		TableName  string
 		Fields     []*Field
 		PrimaryKey *Field
-		ParentKey  *Field
 		Children   []*ChildTable
 		RowClass   reflect.Type
 		tableNo    int
@@ -42,6 +45,7 @@ type (
 
 	ChildTable struct {
 		Table
+		ParentKey  *Field
 		ClassIdx   []int
 		ChildClass reflect.Type
 	}
@@ -51,7 +55,27 @@ type (
 		TokenField   *Field
 		TeenantField *Field
 	}
+
+	entityData struct {
+		pk      int64
+		token   uint32
+		teenant uint32
+
+		children []rowData
+	}
+	rowData struct {
+		tableNo int
+		pk      int64
+	}
 )
+
+func (t *Table) A() {
+	fmt.Println("Table: A")
+}
+
+func (t *Entity) A() {
+	fmt.Println("Entity: A")
+}
 
 func (t *Table) init() {
 	t.Fields = make([]*Field, 0, 32)
@@ -84,7 +108,7 @@ func (t *Table) check() (bool, error) {
 	return true, nil
 }
 
-func (t *Table) flatten(path []*Table) []*Table {
+func (t *ChildTable) flatten(path []*ChildTable) []*ChildTable {
 	path = append(path, t)
 	for _, child := range t.Children {
 		path = child.flatten(path)
@@ -92,6 +116,11 @@ func (t *Table) flatten(path []*Table) []*Table {
 
 	return path
 }
-func (ent *Entity) Flatten() []*Table {
-	return ent.Table.flatten(make([]*Table, 0, 16))
+func (ent *Entity) FlattenChildren() []*ChildTable {
+	path := make([]*ChildTable, 0, 16)
+	for _, child := range ent.Children {
+		path = child.flatten(path)
+	}
+
+	return path
 }

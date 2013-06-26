@@ -37,7 +37,7 @@ type (
 	}
 )
 
-func (su *SchemaUpgrader) GetSchemaForTable(t *Table) *TableSchema {
+func (su *SchemaUpgrader) getSchemaForTable(t *Table) *TableSchema {
 	var ts *TableSchema = new(TableSchema)
 	ts.Name = t.TableName
 	ts.Columns = make([]*ColumnSchema, len(t.Fields))
@@ -53,7 +53,7 @@ func (su *SchemaUpgrader) GetSchemaForTable(t *Table) *TableSchema {
 		}
 		ts.Columns[i] = cs
 
-		if (f == t.ParentKey && t.PrimaryKey != t.ParentKey) || f.isIndex {
+		if f.isIndex {
 			var is *IndexSchema = new(IndexSchema)
 			is.Name = ""
 			is.Column = cs
@@ -66,14 +66,55 @@ func (su *SchemaUpgrader) GetSchemaForTable(t *Table) *TableSchema {
 	return ts
 }
 
+func (su *SchemaUpgrader) GetSchemaForChild(child *ChildTable) *TableSchema {
+	var t *Table = &((*child).Table)
+	ts := su.getSchemaForTable(t)
+	if child.PrimaryKey != child.ParentKey {
+		for _, col := range ts.Columns {
+			if col.Name == child.ParentKey.sqlName {
+				var is *IndexSchema = new(IndexSchema)
+				is.Name = ""
+				is.Column = col
+				is.IsUnique = false
+				ts.Indice = append(ts.Indice, is)
+				break
+			}
+		}
+	}
+
+	return ts
+}
+
+func (su *SchemaUpgrader) GetSchemaForEntity(entity *Entity) *TableSchema {
+	var t *Table = &((*entity).Table)
+	ts := su.getSchemaForTable(t)
+	if entity.TeenantField != nil {
+		for _, col := range ts.Columns {
+			if col.Name == entity.TeenantField.sqlName {
+				var is *IndexSchema = new(IndexSchema)
+				is.Name = ""
+				is.Column = col
+				is.IsUnique = false
+				ts.Indice = append(ts.Indice, is)
+				break
+			}
+		}
+	}
+
+	return ts
+}
+
 func (su *SchemaUpgrader) UpgradeEntity(ent *Entity) error {
-	var e error
-	tables := ent.Flatten()
-	for _, t := range tables {
-		var dbSchema *TableSchema
-		var classSchema *TableSchema
-		dbSchema, e = su.SqlDmlDriver.ReadTableSchema(t.TableName)
-		classSchema = su.GetSchemaForTable(t)
+
+	children := ent.FlattenChildren()
+	var tables []*TableSchema = make([]*TableSchema, len(children)+1)
+	tables[0] = su.GetSchemaForEntity(ent)
+	for i, child := range children {
+		tables[i+1] = su.GetSchemaForChild(child)
+	}
+
+	for _, classSchema := range tables {
+		dbSchema, e := su.SqlDmlDriver.ReadTableSchema(classSchema.Name)
 
 		if e == nil { // upgrade
 			for _, fsc := range classSchema.Columns {
@@ -85,7 +126,7 @@ func (su *SchemaUpgrader) UpgradeEntity(ent *Entity) error {
 					}
 				}
 				if !found {
-					e = su.SqlDmlDriver.AlterTableAddColumn(t.TableName, fsc)
+					e = su.SqlDmlDriver.AlterTableAddColumn(dbSchema.Name, fsc)
 					if e != nil {
 						return e
 					}
@@ -101,7 +142,7 @@ func (su *SchemaUpgrader) UpgradeEntity(ent *Entity) error {
 					}
 				}
 				if !found {
-					e = su.SqlDmlDriver.AlterTableAddIndex(t.TableName, isc)
+					e = su.SqlDmlDriver.AlterTableAddIndex(dbSchema.Name, isc)
 					if e != nil {
 						return e
 					}

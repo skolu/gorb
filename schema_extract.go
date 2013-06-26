@@ -9,11 +9,13 @@ import (
 )
 
 const (
-	TagPrefix string = "gorb"
-	TagPK     string = "pk"    // field: primary key
-	TagFK     string = "fk"    // field: foreign key
-	TagIndex  string = "index" // field: index
-	TagNull   string = "null"  // field: field accepts null
+	TagPrefix  string = "gorb"
+	TagPK      string = "pk"      // field: primary key
+	TagFK      string = "fk"      // field: foreign key
+	TagToken   string = "token"   // field: sync token
+	TagTeenant string = "teenant" // field:
+	TagIndex   string = "index"   // field: index
+	TagNull    string = "null"    // field: field accepts null
 )
 
 var (
@@ -59,7 +61,60 @@ func getPrimitiveDataType(t reflect.Type) DataType {
 	return Unsupported
 }
 
-func (t *Table) extractGorbSchema(class reflect.Type, path []int) (bool, error) {
+func (t *Table) ParseFieldProperty(property string, field *Field) error {
+	if property == TagPK {
+		if t.PrimaryKey != nil {
+			return fmt.Errorf("Duplicate primary key definition")
+		}
+		t.PrimaryKey = field
+	} else if property == TagIndex {
+		field.isIndex = true
+	} else if property == TagNull {
+		field.isNullable = true
+	} else if strings.HasPrefix(property, ":") {
+		i16, e := strconv.ParseInt(property[1:], 10, 16)
+		if e == nil {
+			field.precision = uint16(i16)
+		}
+	} else {
+		return fmt.Errorf("Unsupported property %s for field %s", property, field.sqlName)
+	}
+
+	return nil
+}
+
+func (c *ChildTable) ParseFieldProperty(property string, field *Field) error {
+	if property == TagFK {
+		if c.ParentKey != nil {
+			return fmt.Errorf("Duplicate parent key definition")
+		}
+		c.ParentKey = field
+	} else {
+		var t *Table = &((*c).Table)
+		return t.ParseFieldProperty(property, field)
+	}
+	return nil
+}
+
+func (e *Entity) ParseFieldProperty(property string, field *Field) error {
+	if property == TagToken {
+		if e.TokenField != nil {
+			return fmt.Errorf("Duplicate token field definition")
+		}
+		e.TokenField = field
+	} else if property == TagTeenant {
+		if e.TeenantField != nil {
+			return fmt.Errorf("Duplicate teenant field definition")
+		}
+		e.TeenantField = field
+	} else {
+		var t *Table = &((*e).Table)
+		return t.ParseFieldProperty(property, field)
+	}
+	return nil
+}
+
+func (t *Table) extractGorbSchema(class reflect.Type, path []int, propertyParser FieldPropertyParser) (bool, error) {
 	for i := 0; i < class.NumField(); i++ {
 		ft := class.Field(i)
 
@@ -82,27 +137,9 @@ func (t *Table) extractGorbSchema(class reflect.Type, path []int) (bool, error) 
 					prop := strings.TrimSpace(props[i])
 					prop = strings.ToLower(prop)
 
-					if prop == "pk" {
-						if t.PrimaryKey != nil {
-							return false, fmt.Errorf("Duplicate primary key definition")
-						}
-						t.PrimaryKey = fld
-					} else if prop == "fk" {
-						if t.ParentKey != nil {
-							return false, fmt.Errorf("Duplicate parent key definition")
-						}
-						t.ParentKey = fld
-					} else if prop == "index" {
-						fld.isIndex = true
-					} else if prop == "null" {
-						fld.isNullable = true
-					} else if strings.HasPrefix(prop, ":") {
-						i16, e := strconv.ParseInt(prop[1:], 10, 16)
-						if e == nil {
-							fld.precision = uint16(i16)
-						}
-					} else {
-						return false, fmt.Errorf("Unsupported field property: %s", prop)
+					e := propertyParser.ParseFieldProperty(prop, fld)
+					if e != nil {
+						return false, e
 					}
 				}
 				if fld.FieldType.Kind() == reflect.Ptr {
@@ -124,7 +161,7 @@ func (t *Table) extractGorbSchema(class reflect.Type, path []int) (bool, error) 
 							c.ChildClass = ft.Type
 							c.RowClass = chType
 							c.ClassIdx = append(path, i)
-							res, err := c.extractGorbSchema(chType, []int{})
+							res, err := c.extractGorbSchema(chType, []int{}, c)
 							if res {
 								t.Children = append(t.Children, c)
 							} else {
@@ -138,7 +175,7 @@ func (t *Table) extractGorbSchema(class reflect.Type, path []int) (bool, error) 
 			}
 
 		} else if ft.Type.Kind() == reflect.Struct {
-			res, err := t.extractGorbSchema(ft.Type, append(path, i))
+			res, err := t.extractGorbSchema(ft.Type, append(path, i), propertyParser)
 			if !res {
 				return res, err
 			}

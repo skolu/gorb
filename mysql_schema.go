@@ -107,17 +107,17 @@ func MySqlColumnDefinition(col *ColumnSchema) string {
 	case Int32:
 		typeDef[1] = "Integer"
 	case Int64:
-		typeDef[1] = "BigInt"
+		typeDef[1] = "Bigint"
 	case Float:
 		typeDef[1] = "Double"
 	case String:
 		if col.Precision > 0 {
-			typeDef[1] = fmt.Sprintf("VarChar(%d)", col.Precision)
+			typeDef[1] = fmt.Sprintf("Varchar(%d)", col.Precision)
 		} else {
 			typeDef[1] = "Text"
 		}
 	case DateTime:
-		typeDef[1] = "TimeStamp"
+		typeDef[1] = "Timestamp"
 	case Blob:
 		typeDef[1] = "Blob"
 
