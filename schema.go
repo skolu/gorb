@@ -39,7 +39,7 @@ type (
 		PrimaryKey *Field
 		Children   []*ChildTable
 		RowClass   reflect.Type
-		tableNo    int
+		tableNo    int32
 		stmts      *tableStmts
 	}
 
@@ -55,27 +55,7 @@ type (
 		TokenField   *Field
 		TeenantField *Field
 	}
-
-	entityData struct {
-		pk      int64
-		token   uint32
-		teenant uint32
-
-		children []rowData
-	}
-	rowData struct {
-		tableNo int
-		pk      int64
-	}
 )
-
-func (t *Table) A() {
-	fmt.Println("Table: A")
-}
-
-func (t *Entity) A() {
-	fmt.Println("Entity: A")
-}
 
 func (t *Table) init() {
 	t.Fields = make([]*Field, 0, 32)

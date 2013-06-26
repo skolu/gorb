@@ -13,9 +13,9 @@ type (
 	}
 
 	GorbConnection interface {
-		EntityGet(entity interface{}, pk interface{}) error
+		EntityGet(entity interface{}, pk int64) error
 		EntityPut(entity interface{}) error
-		EntityDelete(eType reflect.Type, pk interface{}) error
+		EntityDelete(eType reflect.Type, pk int64) error
 	}
 
 	GorbManager struct {
@@ -69,7 +69,7 @@ func (mgr *GorbManager) RegisterEntity(class reflect.Type, tableName string) (*E
 			e.Table.tableNo = 0
 			tables := e.FlattenChildren()
 			for i, t := range tables {
-				t.tableNo = i + 1
+				t.tableNo = int32(i + 1)
 			}
 			mgr.Entities[class] = e
 			mgr.names[e.TableName] = class
@@ -140,114 +140,4 @@ func (conn *GorbManager) EntityDelete(eType reflect.Type, pk interface{}) (bool,
 	}
 
 	return conn.deleteEntity(ent, pk)
-}
-
-func (ch *ChildTable) populateData(data *entityData, pk int64) error {
-	var e error = nil
-	var rows *sql.Rows
-
-	rows, e = ch.stmts.stmtInfo.Query(pk)
-	if e == nil {
-		var rd rowData
-		rd.tableNo = ch.tableNo
-		defer rows.Close()
-		for rows.Next() {
-			e = rows.Scan(&(rd.pk))
-			if e != nil {
-				break
-			}
-			data.children = append(data.children, rd)
-		}
-	}
-
-	return e
-}
-func (ent *Entity) populateData(data *entityData, pk int64) error {
-	var e error = nil
-	e = ent.stmts.stmtInfo.QueryRow(pk).Scan(&((*data).pk), &((*data).token), &((*data).teenant))
-	for _, ch := range ent.FlattenChildren() {
-		ch.populateData(data, pk)
-	}
-
-	return e
-}
-
-func (conn *GorbManager) EntityPut(entity interface{}) error {
-	if conn.db == nil {
-		return fmt.Errorf("Database connection is not set")
-	}
-
-	var ent *Entity
-	eType := reflect.TypeOf(entity)
-	if eType.Kind() == reflect.Ptr {
-		eType = eType.Elem()
-	}
-	ent = conn.LookupEntity(eType)
-	if ent == nil {
-		return fmt.Errorf("Unsupported entity %s", eType.Name())
-	}
-
-	var e error
-
-	initf, ok := entity.(interface {
-		OnEntitySave() (bool, error)
-	})
-	if ok {
-		ok, e = initf.OnEntitySave()
-		if !ok {
-			return e
-		}
-	}
-
-	var eData entityData
-
-	value := reflect.ValueOf(entity)
-	var pk int64 = value.FieldByIndex(ent.PrimaryKey.classIdx).Int()
-	if pk != 0 {
-		eData.children = make([]rowData, 0, 16)
-		e := ent.populateData(&eData, pk)
-		if e != nil {
-			return e
-		}
-		if ent.TokenField != nil {
-			var token int64 = value.FieldByIndex(ent.TokenField.classIdx).Int()
-			if token != int64(eData.token) {
-				return fmt.Errorf("Invalid Edit Token")
-			}
-		}
-		if ent.TeenantField != nil {
-			var teenant int64 = value.FieldByIndex(ent.TeenantField.classIdx).Int()
-			if teenant != int64(eData.teenant) {
-				return fmt.Errorf("Invalid Teenant")
-			}
-		}
-	}
-	var txn *sql.Tx
-	txn, e = conn.db.Begin()
-	if e == nil {
-		var stmt *sql.Stmt
-		var res sql.Result
-
-		var flds []interface{} = make([]interface{}, len(ent.Fields)-1)
-		if eData.pk == 0 {
-			stmt = txn.Stmt(ent.stmts.stmtInsert)
-			res, e = stmt.Exec(flds...)
-		} else {
-			flds = append(flds, pk)
-			stmt = txn.Stmt(ent.stmts.stmtUpdate)
-			res, e = stmt.Exec(flds...)
-		}
-		if e == nil {
-			if eData.pk == 0 {
-				eData.pk, e = res.LastInsertId()
-			}
-		}
-		if e == nil {
-			e = txn.Commit()
-		} else {
-			txn.Rollback()
-		}
-	}
-
-	return e
 }
