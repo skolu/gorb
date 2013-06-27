@@ -69,7 +69,7 @@ func (c *ChildTable) createStatements(db *sql.DB, tablePath []*ChildTable) error
 	var e error = nil
 
 	if e == nil {
-		stmts.stmtSelect, e = db.Prepare(c.getInfoQuery(tablePath))
+		stmts.stmtInfo, e = db.Prepare(c.getInfoQuery(tablePath))
 	}
 	if e == nil {
 		stmts.stmtSelect, e = db.Prepare(c.getSelectQuery(tablePath))
@@ -111,7 +111,7 @@ func (entity *Entity) createStatements(db *sql.DB) error {
 	var e error = nil
 
 	if e == nil {
-		stmts.stmtSelect, e = db.Prepare(entity.getInfoQuery())
+		stmts.stmtInfo, e = db.Prepare(entity.getInfoQuery())
 	}
 	if e == nil {
 		stmts.stmtSelect, e = db.Prepare(entity.getSelectQuery())
@@ -148,9 +148,9 @@ func (entity *Entity) createStatements(db *sql.DB) error {
 	return nil
 }
 
-func (t *Table) populateChildren(row reflect.Value) (bool, error) {
+func (t *Table) populateChildren(row reflect.Value) error {
 	if t.RowClass != row.Type() {
-		return false, fmt.Errorf("populateChildren: row and schema mismatch")
+		return fmt.Errorf("populateChildren: row and schema mismatch")
 	}
 
 	var rowKey reflect.Value
@@ -176,7 +176,7 @@ func (t *Table) populateChildren(row reflect.Value) (bool, error) {
 
 		rows, e = childTable.stmts.stmtSelect.Query(rowKey.Interface())
 		if rows == nil {
-			return false, e
+			return e
 		}
 		var flds []interface{}
 		flds = make([]interface{}, len(childTable.Fields))
@@ -197,7 +197,7 @@ func (t *Table) populateChildren(row reflect.Value) (bool, error) {
 			e = rows.Scan(flds...)
 			if e != nil {
 				rows.Close()
-				return false, e
+				return e
 			}
 			switch childTable.ChildClass.Kind() {
 			case reflect.Ptr:
@@ -220,21 +220,21 @@ func (t *Table) populateChildren(row reflect.Value) (bool, error) {
 		}
 		e = rows.Err()
 		if e != nil {
-			return false, e
+			return e
 		}
 
 	}
 
-	return true, nil
+	return nil
 }
 
-func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, error) {
+func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) error {
 	if conn.db == nil {
-		return false, fmt.Errorf("Database connection is not set")
+		return fmt.Errorf("Database connection is not set")
 	}
 
 	if object == nil || pk == nil {
-		return false, fmt.Errorf("EntityGet: parameters cannot be nil")
+		return fmt.Errorf("EntityGet: parameters cannot be nil")
 	}
 
 	eType := reflect.TypeOf(object)
@@ -245,7 +245,7 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 
 	var ent *Entity = conn.LookupEntity(eType)
 	if ent == nil {
-		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
+		return fmt.Errorf("Unsupported entity %s", eType.Name())
 	}
 
 	var e error
@@ -264,7 +264,7 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) (bool, er
 
 	e = ent.stmts.stmtSelect.QueryRow(pk).Scan(flds...)
 	if e != nil {
-		return false, e
+		return e
 	}
 
 	return ent.populateChildren(rowValue)

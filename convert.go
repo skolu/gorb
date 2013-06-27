@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+	"unicode"
 )
 
 type (
@@ -12,12 +13,33 @@ type (
 	}
 )
 
+func isZeroDateStr(str string) bool {
+	var hasDigit = false
+	for _, r := range str {
+		if unicode.IsDigit(r) {
+			if r != '0' {
+				return false
+			}
+			hasDigit = true
+		} else if unicode.IsPunct(r) {
+		} else if unicode.IsSpace(r) {
+		} else {
+			return false
+		}
+	}
+	return hasDigit
+}
 func parseDateTimeStr(str string) (t time.Time, err error) {
 	switch len(str) {
 	case 10:
-		t, err = time.Parse(timeFormat[:10], str)
+		if !isZeroDateStr(str) {
+			t, err = time.Parse(timeFormat[:10], str)
+		}
 	case 19:
-		t, err = time.Parse(timeFormat, str)
+		if !isZeroDateStr(str) {
+			//t, err = time.Parse(timeFormat, str)
+			t, err = time.ParseInLocation(timeFormat, str, time.UTC)
+		}
 	default:
 		err = fmt.Errorf("Invalid Time-String: %s", str)
 		return
@@ -91,7 +113,16 @@ func parseBoolean(value interface{}) (bVal bool, err error) {
 		}
 	case []byte:
 		{
-			bVal, err = strconv.ParseBool(string(src))
+			if len(src) == 1 {
+				if src[0] == 0x0 {
+					bVal = false
+				} else {
+					bVal = true
+				}
+
+			} else {
+				bVal, err = strconv.ParseBool(string(src))
+			}
 		}
 	default:
 		{

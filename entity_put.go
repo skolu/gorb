@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"time"
 )
 
 type (
@@ -97,7 +98,14 @@ func (conn *GorbManager) EntityPut(entity interface{}) error {
 		eValue = eValue.Elem()
 	}
 	pkValue := eValue.FieldByIndex(ent.PrimaryKey.classIdx)
-	eData.pk = pkValue.Int()
+	switch pkValue.Kind() {
+	case reflect.Int, reflect.Int32, reflect.Int64:
+		eData.pk = pkValue.Int()
+	case reflect.Uint, reflect.Uint32, reflect.Uint64:
+		eData.pk = int64(pkValue.Uint())
+	default:
+		return fmt.Errorf("Unsupported Primary Key type")
+	}
 	if eData.pk != 0 {
 		eData.children = make([]rowData, 0, 16)
 		e := ent.populateData(&eData, eData.pk)
@@ -131,7 +139,19 @@ func (conn *GorbManager) EntityPut(entity interface{}) error {
 	for _, f := range ent.Fields {
 		if f != ent.PrimaryKey {
 			fv := eValue.FieldByIndex(f.classIdx)
-			flds = append(flds, fv.Interface())
+			if fv.Kind() == reflect.Ptr {
+				if !fv.IsNil() {
+					fv = fv.Elem()
+				}
+			}
+			fvi := fv.Interface()
+			switch p := fvi.(type) {
+			case time.Time:
+				fvi = p.UTC()
+			case nil:
+
+			}
+			flds = append(flds, fvi)
 		}
 	}
 	if eData.pk == 0 {
@@ -151,7 +171,12 @@ func (conn *GorbManager) EntityPut(entity interface{}) error {
 		if eData.pk == 0 {
 			eData.pk, e = res.LastInsertId()
 			if e == nil {
-				pkValue.SetInt(eData.pk)
+				switch pkValue.Kind() {
+				case reflect.Int, reflect.Int32, reflect.Int64:
+					pkValue.SetInt(eData.pk)
+				case reflect.Uint, reflect.Uint32, reflect.Uint64:
+					pkValue.SetUint(uint64(eData.pk))
+				}
 			}
 		}
 	}
