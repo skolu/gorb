@@ -3,7 +3,6 @@ package gorb
 import (
 	"database/sql"
 	"fmt"
-	"reflect"
 )
 
 type (
@@ -146,128 +145,6 @@ func (entity *Entity) createStatements(db *sql.DB) error {
 		}
 	}
 	return nil
-}
-
-func (t *Table) populateChildren(row reflect.Value) error {
-	if t.RowClass != row.Type() {
-		return fmt.Errorf("populateChildren: row and schema mismatch")
-	}
-
-	var rowKey reflect.Value
-	rowKey = row.FieldByIndex(t.PrimaryKey.classIdx)
-
-	for _, childTable := range t.Children {
-		var e error
-		var rows *sql.Rows
-
-		childStorage := row.FieldByIndex(childTable.ClassIdx)
-		if childStorage.IsNil() {
-			switch childTable.ChildClass.Kind() {
-			case reflect.Slice:
-				{
-					childStorage = reflect.MakeSlice(childTable.ChildClass, 0, 16)
-				}
-			case reflect.Map:
-				{
-					childStorage = reflect.MakeMap(childTable.ChildClass)
-				}
-			}
-		}
-
-		rows, e = childTable.stmts.stmtSelect.Query(rowKey.Interface())
-		if rows == nil {
-			return e
-		}
-		var flds []interface{}
-		flds = make([]interface{}, len(childTable.Fields))
-		for rows.Next() {
-			var childRow reflect.Value
-			childRow = reflect.New(childTable.RowClass)
-
-			for i, f := range t.Fields {
-				if f.FieldType.Kind() == reflect.Ptr {
-					ptrV := reflect.New(f.FieldType)
-					fldV := childRow.FieldByIndex(f.classIdx)
-					fldV.Set(ptrV)
-					flds[i] = ptrV.Elem()
-				} else {
-					flds[i] = childRow.FieldByIndex(f.classIdx)
-				}
-			}
-			e = rows.Scan(flds...)
-			if e != nil {
-				rows.Close()
-				return e
-			}
-			switch childTable.ChildClass.Kind() {
-			case reflect.Ptr:
-				{
-					childStorage.Set(childRow)
-				}
-			case reflect.Slice:
-				{
-					childStorage.Set(reflect.Append(childStorage, childRow))
-				}
-			case reflect.Map:
-				{
-					childKey := childRow.FieldByIndex(childTable.PrimaryKey.classIdx)
-					childStorage.SetMapIndex(childKey, childRow)
-				}
-			}
-
-			childTable.populateChildren(childRow)
-
-		}
-		e = rows.Err()
-		if e != nil {
-			return e
-		}
-
-	}
-
-	return nil
-}
-
-func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) error {
-	if conn.db == nil {
-		return fmt.Errorf("Database connection is not set")
-	}
-
-	if object == nil || pk == nil {
-		return fmt.Errorf("EntityGet: parameters cannot be nil")
-	}
-
-	eType := reflect.TypeOf(object)
-	var isPtr bool = eType.Kind() == reflect.Ptr
-	if isPtr {
-		eType = eType.Elem()
-	}
-
-	var ent *Entity = conn.LookupEntity(eType)
-	if ent == nil {
-		return fmt.Errorf("Unsupported entity %s", eType.Name())
-	}
-
-	var e error
-	var flds []interface{} = make([]interface{}, len(ent.Fields))
-
-	rowValue := reflect.ValueOf(object)
-	if isPtr {
-		rowValue = rowValue.Elem()
-	}
-	for i, f := range ent.Fields {
-		pV := rowValue.FieldByIndex(f.classIdx).Addr().Interface()
-		var gs gorbScanner
-		gs.ptr = pV
-		flds[i] = &gs
-	}
-
-	e = ent.stmts.stmtSelect.QueryRow(pk).Scan(flds...)
-	if e != nil {
-		return e
-	}
-
-	return ent.populateChildren(rowValue)
 }
 
 func (t *Table) cascadeDelete(txn *sql.Tx, pk interface{}) error {
