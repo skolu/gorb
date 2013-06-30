@@ -66,26 +66,35 @@ func (stmts *tableStmts) releaseStatements() {
 func (c *ChildTable) createStatements(db *sql.DB, tablePath []*ChildTable) error {
 	stmts := new(tableStmts)
 	var e error = nil
+	var query string
 
 	if e == nil {
-		stmts.stmtInfo, e = db.Prepare(c.getInfoQuery(tablePath))
+		query = c.getInfoQuery(tablePath)
+		stmts.stmtInfo, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtSelect, e = db.Prepare(c.getSelectQuery(tablePath))
+		query = c.getSelectQuery(tablePath)
+		stmts.stmtSelect, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtInsert, e = db.Prepare(c.getInsertQuery())
+		query = c.getInsertQuery()
+		fmt.Println(query)
+		stmts.stmtInsert, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtUpdate, e = db.Prepare(c.getUpdateQuery())
+		query = c.getUpdateQuery()
+		stmts.stmtUpdate, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtRemove, e = db.Prepare(c.getRemoveQuery())
+		query = c.getRemoveQuery()
+		stmts.stmtRemove, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtDelete, e = db.Prepare(c.getDeleteQuery(tablePath))
+		query = c.getDeleteQuery(tablePath)
+		stmts.stmtDelete, e = db.Prepare(query)
 	}
 	if e != nil {
+		fmt.Printf("Invalid query: %s", query)
 		stmts.releaseStatements()
 		return e
 	}
@@ -108,26 +117,34 @@ func (c *ChildTable) createStatements(db *sql.DB, tablePath []*ChildTable) error
 func (entity *Entity) createStatements(db *sql.DB) error {
 	stmts := new(tableStmts)
 	var e error = nil
+	var query string
 
 	if e == nil {
-		stmts.stmtInfo, e = db.Prepare(entity.getInfoQuery())
+		query = entity.getInfoQuery()
+		stmts.stmtInfo, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtSelect, e = db.Prepare(entity.getSelectQuery())
+		query = entity.getSelectQuery()
+		stmts.stmtSelect, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtInsert, e = db.Prepare(entity.getInsertQuery())
+		query = entity.getInsertQuery()
+		stmts.stmtInsert, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtUpdate, e = db.Prepare(entity.getUpdateQuery())
+		query = entity.getUpdateQuery()
+		stmts.stmtUpdate, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtRemove, e = db.Prepare(entity.getRemoveQuery())
+		query = entity.getRemoveQuery()
+		stmts.stmtRemove, e = db.Prepare(query)
 	}
 	if e == nil {
-		stmts.stmtDelete, e = db.Prepare(entity.getDeleteQuery())
+		query = entity.getDeleteQuery()
+		stmts.stmtDelete, e = db.Prepare(query)
 	}
 	if e != nil {
+		fmt.Printf("Invalid query: %s", query)
 		stmts.releaseStatements()
 		return e
 	}
@@ -145,28 +162,4 @@ func (entity *Entity) createStatements(db *sql.DB) error {
 		}
 	}
 	return nil
-}
-
-func (t *Table) cascadeDelete(txn *sql.Tx, pk interface{}) error {
-	for _, child := range t.Children {
-		child.cascadeDelete(txn, pk)
-	}
-	stmt := txn.Stmt(t.stmts.stmtDelete)
-	_, e := stmt.Exec(pk)
-	return e
-}
-
-func (conn *GorbManager) deleteEntity(ent *Entity, pk interface{}) (bool, error) {
-	var e error
-	txn, e := conn.db.Begin()
-	if e != nil {
-		return false, e
-	}
-	e = ent.cascadeDelete(txn, pk)
-	if e == nil {
-		e = txn.Commit()
-	} else {
-		txn.Rollback()
-	}
-	return e == nil, e
 }

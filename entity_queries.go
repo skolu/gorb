@@ -94,11 +94,15 @@ func (c *ChildTable) getInsertQuery() string {
 	buffer.WriteString("(")
 
 	i := 0
+	if !c.IsPkSerial { // put PK first
+		buffer.WriteString(c.PrimaryKey.sqlName)
+		i++
+	}
 	for _, f := range c.Fields {
-		if i > 0 {
-			buffer.WriteString(", ")
-		}
-		if f != c.PrimaryKey || f == c.ParentKey {
+		if f != c.PrimaryKey {
+			if i > 0 {
+				buffer.WriteString(", ")
+			}
 			buffer.WriteString(f.sqlName)
 			i++
 		}
@@ -123,11 +127,15 @@ func (e *Entity) getInsertQuery() string {
 	buffer.WriteString("(")
 
 	i := 0
+	if !e.IsPkSerial { // put PK first
+		buffer.WriteString(e.PrimaryKey.sqlName)
+		i++
+	}
 	for _, f := range e.Fields {
-		if i > 0 {
-			buffer.WriteString(", ")
-		}
 		if f != e.PrimaryKey {
+			if i > 0 {
+				buffer.WriteString(", ")
+			}
 			buffer.WriteString(f.sqlName)
 			i++
 		}
@@ -181,7 +189,7 @@ func (c *ChildTable) getDeleteQuery(tablePath []*ChildTable) string {
 	} else {
 		open := 1
 		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s IN (", c.TableName, c.ParentKey.sqlName))
-		for i := len(tablePath) - 1; i >= 1; i-- {
+		for i := len(tablePath) - 1; i >= 0; i-- {
 			tbl := tablePath[i]
 			if i > 1 {
 				open++

@@ -66,6 +66,11 @@ func (t *Table) ParseFieldProperty(property string, field *Field) error {
 		if t.PrimaryKey != nil {
 			return fmt.Errorf("Duplicate primary key definition")
 		}
+		if field.DataType == Int32 || field.DataType == Int64 {
+			t.IsPkSerial = true
+		} else if field.DataType != String {
+			return fmt.Errorf("Column \"%s\" in table \"%s\" cannot be Primary Key", field.sqlName, t.TableName)
+		}
 		t.PrimaryKey = field
 	} else if property == TagIndex {
 		field.isIndex = true
@@ -89,6 +94,9 @@ func (c *ChildTable) ParseFieldProperty(property string, field *Field) error {
 			return fmt.Errorf("Duplicate parent key definition")
 		}
 		c.ParentKey = field
+		if c.PrimaryKey == c.ParentKey {
+			c.IsPkSerial = false
+		}
 	} else {
 		var t *Table = &((*c).Table)
 		return t.ParseFieldProperty(property, field)

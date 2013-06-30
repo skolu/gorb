@@ -143,7 +143,8 @@ func (u *MySqlSchemaUpgrader) ReadTableSchema(tableName string) (*TableSchema, e
 	var e error
 
 	//| Field       | Type                | Null | Key | Default             | Extra                       |
-	rows, e = u.Db.Query(fmt.Sprintf("Show Columns From %s;", tableName))
+	var query string = fmt.Sprintf("Show Columns From %s", tableName)
+	rows, e = u.Db.Query(query)
 	if e != nil {
 		return nil, e
 	}

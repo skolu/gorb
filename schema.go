@@ -40,6 +40,7 @@ type (
 		Children   []*ChildTable
 		RowClass   reflect.Type
 		tableNo    int32
+		IsPkSerial bool
 		stmts      *tableStmts
 	}
 

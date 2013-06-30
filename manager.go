@@ -120,24 +120,3 @@ func (mgr *GorbManager) SetDB(db *sql.DB) error {
 
 	return nil
 }
-
-func (conn *GorbManager) EntityDelete(eType reflect.Type, pk interface{}) (bool, error) {
-	if conn.db == nil {
-		return false, fmt.Errorf("Database connection is not set")
-	}
-
-	if pk == nil {
-		return false, fmt.Errorf("EntityGet: parameters cannot be nil")
-	}
-
-	var ent *Entity
-	if eType.Kind() == reflect.Ptr {
-		eType = eType.Elem()
-	}
-	ent = conn.LookupEntity(eType)
-	if ent == nil {
-		return false, fmt.Errorf("Unsupported entity %s", eType.Name())
-	}
-
-	return conn.deleteEntity(ent, pk)
-}
