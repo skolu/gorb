@@ -16,26 +16,6 @@ type (
 	}
 )
 
-const (
-	timeFormat = "2006-01-02 15:04:05"
-)
-
-func (c *ChildTable) dumpChildQueries(tablePath []*ChildTable) {
-	fmt.Printf("Select \"%s\": %s\n", c.TableName, c.getSelectQuery(tablePath))
-	fmt.Printf("Delete \"%s\": %s\n", c.TableName, c.getDeleteQuery(tablePath))
-	for _, chld := range c.Children {
-		chld.dumpChildQueries(append(tablePath, c))
-	}
-}
-func (e *Entity) DumpQueries() {
-	fmt.Printf("Select \"%s\": %s\n", e.TableName, e.getSelectQuery())
-	fmt.Printf("Delete \"%s\": %s\n", e.TableName, e.getDeleteQuery())
-
-	for _, chld := range e.Children {
-		chld.dumpChildQueries([]*ChildTable{})
-	}
-}
-
 func (stmts *tableStmts) releaseStatements() {
 	if stmts.stmtInfo != nil {
 		stmts.stmtInfo.Close()
@@ -118,6 +98,8 @@ func (entity *Entity) createStatements(db *sql.DB) error {
 	stmts := new(tableStmts)
 	var e error = nil
 	var query string
+
+	entity.selectFields = entity.getSelectFields()
 
 	if e == nil {
 		query = entity.getInfoQuery()

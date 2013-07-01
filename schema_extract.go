@@ -136,6 +136,7 @@ func (t *Table) extractGorbSchema(class reflect.Type, path []int, propertyParser
 			dataType := getPrimitiveDataType(ft.Type)
 			if dataType != Unsupported {
 				fld := new(Field)
+				fld.FieldName = ft.Name
 				fld.DataType = dataType
 				fld.FieldType = ft.Type
 				fld.sqlName = strings.TrimSpace(props[0])

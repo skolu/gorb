@@ -70,6 +70,22 @@ func (c *ChildTable) getSelectQuery(tablePath []*ChildTable) string {
 	return buffer.String()
 }
 
+func (e *Entity) getSelectFields() string {
+	var buffer bytes.Buffer
+
+	buffer.WriteString("SELECT ")
+	for i, f := range e.Fields {
+		if i > 0 {
+			buffer.WriteString(", ")
+		}
+		buffer.WriteString(f.sqlName)
+	}
+
+	buffer.WriteString(fmt.Sprintf(" FROM %s", e.TableName))
+
+	return buffer.String()
+}
+
 func (e *Entity) getSelectQuery() string {
 	var buffer bytes.Buffer
 

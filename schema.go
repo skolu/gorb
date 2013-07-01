@@ -24,6 +24,7 @@ type (
 	}
 
 	Field struct {
+		FieldName  string
 		DataType   DataType
 		FieldType  reflect.Type
 		sqlName    string
@@ -55,6 +56,7 @@ type (
 		Table
 		TokenField   *Field
 		TeenantField *Field
+		selectFields string
 	}
 )
 

@@ -16,6 +16,8 @@ type (
 		EntityGet(entity interface{}, pk int64) error
 		EntityPut(entity interface{}) error
 		EntityDelete(eType reflect.Type, pk int64) error
+		EntityQueryIds(request *RequestQuery) ([]int64, error)
+		EntityQuery(request *RequestQuery) ([]interface{}, error)
 	}
 
 	GorbManager struct {

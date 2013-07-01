@@ -69,6 +69,13 @@ func (su *SchemaUpgrader) getSchemaForTable(t *Table) *TableSchema {
 func (su *SchemaUpgrader) GetSchemaForChild(child *ChildTable) *TableSchema {
 	var t *Table = &((*child).Table)
 	ts := su.getSchemaForTable(t)
+	for _, f := range ts.Columns {
+		if child.ParentKey.sqlName == f.Name {
+			ts.ForeignKey = f
+			break
+		}
+	}
+
 	if child.PrimaryKey != child.ParentKey {
 		for _, col := range ts.Columns {
 			if col.Name == child.ParentKey.sqlName {

@@ -216,7 +216,11 @@ func (u *MySqlSchemaUpgrader) CreateTable(schema *TableSchema) error {
 	buffer.WriteString(fmt.Sprintf("Create Table %s (\n", schema.Name))
 	for _, col := range schema.Columns {
 		if col == schema.PrimaryKey {
-			buffer.WriteString(fmt.Sprintf("\t%s %s,\n", col.Name, "SERIAL"))
+			if schema.PrimaryKey != schema.ForeignKey {
+				buffer.WriteString(fmt.Sprintf("\t%s %s,\n", col.Name, "SERIAL"))
+			} else {
+				buffer.WriteString(fmt.Sprintf("\t%s,\n", MySqlColumnDefinition(col)))
+			}
 		} else {
 			buffer.WriteString(fmt.Sprintf("\t%s,\n", MySqlColumnDefinition(col)))
 		}

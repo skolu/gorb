@@ -8,6 +8,10 @@ import (
 	"unicode"
 )
 
+const (
+	timeFormat = "2006-01-02 15:04:05"
+)
+
 type (
 	gorbScanner struct {
 		ptr interface{}
@@ -38,7 +42,6 @@ func parseDateTimeStr(str string) (t time.Time, err error) {
 		}
 	case 19:
 		if !isZeroDateStr(str) {
-			//t, err = time.Parse(timeFormat, str)
 			t, err = time.ParseInLocation(timeFormat, str, time.UTC)
 		}
 	default:
@@ -63,9 +66,9 @@ func parseTime(value interface{}, dst *time.Time) (err error) {
 	case string:
 		*dst, err = parseDateTimeStr(v)
 	case int64:
-		*dst = time.Unix(value.(int64), 0)
+		*dst = time.Unix(v, 0)
 	case uint64:
-		*dst = time.Unix(int64(value.(uint64)), 0)
+		*dst = time.Unix(int64(v), 0)
 	default:
 		err = fmt.Errorf("Can't convert %T to time.Time", value)
 	}
