@@ -1,10 +1,9 @@
 package gorb
 
-import ()
-
 type (
 	DbSchemaUpgrader interface {
-		GetVersion() int
+		GetVersion() int32
+		SetVersion(version int32) error
 		ReadTableSchema(tableName string) (*TableSchema, error)
 		CreateTable(schema *TableSchema) error
 		AlterTableAddColumn(tableName string, column *ColumnSchema) error
@@ -44,16 +43,16 @@ func (su *SchemaUpgrader) getSchemaForTable(t *Table) *TableSchema {
 	ts.Indice = make([]*IndexSchema, 0, 8)
 	for i, f := range t.Fields {
 		cs := new(ColumnSchema)
-		cs.Name = f.sqlName
+		cs.Name = f.SqlName
 		cs.Type = f.DataType
-		cs.IsNull = f.isNullable
-		cs.Precision = f.precision
+		cs.IsNull = f.IsNullable
+		cs.Precision = f.Precision
 		if f == t.PrimaryKey {
 			ts.PrimaryKey = cs
 		}
 		ts.Columns[i] = cs
 
-		if f.isIndex {
+		if f.IsIndex {
 			var is *IndexSchema = new(IndexSchema)
 			is.Name = ""
 			is.Column = cs
@@ -70,7 +69,7 @@ func (su *SchemaUpgrader) GetSchemaForChild(child *ChildTable) *TableSchema {
 	var t *Table = &((*child).Table)
 	ts := su.getSchemaForTable(t)
 	for _, f := range ts.Columns {
-		if child.ParentKey.sqlName == f.Name {
+		if child.ParentKey.SqlName == f.Name {
 			ts.ForeignKey = f
 			break
 		}
@@ -78,7 +77,7 @@ func (su *SchemaUpgrader) GetSchemaForChild(child *ChildTable) *TableSchema {
 
 	if child.PrimaryKey != child.ParentKey {
 		for _, col := range ts.Columns {
-			if col.Name == child.ParentKey.sqlName {
+			if col.Name == child.ParentKey.SqlName {
 				var is *IndexSchema = new(IndexSchema)
 				is.Name = ""
 				is.Column = col
@@ -95,18 +94,6 @@ func (su *SchemaUpgrader) GetSchemaForChild(child *ChildTable) *TableSchema {
 func (su *SchemaUpgrader) GetSchemaForEntity(entity *Entity) *TableSchema {
 	var t *Table = &((*entity).Table)
 	ts := su.getSchemaForTable(t)
-	if entity.TeenantField != nil {
-		for _, col := range ts.Columns {
-			if col.Name == entity.TeenantField.sqlName {
-				var is *IndexSchema = new(IndexSchema)
-				is.Name = ""
-				is.Column = col
-				is.IsUnique = false
-				ts.Indice = append(ts.Indice, is)
-				break
-			}
-		}
-	}
 
 	return ts
 }

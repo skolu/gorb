@@ -7,11 +7,16 @@ import (
 )
 
 type (
+
+	// GorbEntityEvent defines functions that will be called by GorbManager
+	// if implemented on entity class.
+	// There is no need to define all functions
 	GorbEntityEvents interface {
 		OnEntitySave() (bool, error)
 		OnEntityInit()
 	}
 
+	// GorbConnection define function for data manipulation
 	GorbConnection interface {
 		EntityGet(entity interface{}, pk int64) error
 		EntityPut(entity interface{}) error
@@ -20,6 +25,7 @@ type (
 		EntityQuery(request *RequestQuery) ([]interface{}, error)
 	}
 
+	// GorbManager is the base class that manages Object Relational Mapping
 	GorbManager struct {
 		Entities map[reflect.Type]*Entity
 		names    map[string]reflect.Type

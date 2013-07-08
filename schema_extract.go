@@ -9,13 +9,13 @@ import (
 )
 
 const (
-	TagPrefix  string = "gorb"
-	TagPK      string = "pk"      // field: primary key
-	TagFK      string = "fk"      // field: foreign key
-	TagToken   string = "token"   // field: sync token
-	TagTeenant string = "teenant" // field:
-	TagIndex   string = "index"   // field: index
-	TagNull    string = "null"    // field: field accepts null
+	TagPrefix string = "gorb"
+	TagPK     string = "pk"    // field: primary key
+	TagFK     string = "fk"    // field: foreign key
+	TagToken  string = "token" // field: sync token
+	TagIndex  string = "index" // field: index
+	TagNull   string = "null"  // field: field accepts null
+	TagReq    string = "req"   // field: required field in serialization
 )
 
 var (
@@ -69,20 +69,23 @@ func (t *Table) ParseFieldProperty(property string, field *Field) error {
 		if field.DataType == Int32 || field.DataType == Int64 {
 			t.IsPkSerial = true
 		} else if field.DataType != String {
-			return fmt.Errorf("Column \"%s\" in table \"%s\" cannot be Primary Key", field.sqlName, t.TableName)
+			return fmt.Errorf("Column \"%s\" in table \"%s\" cannot be Primary Key", field.SqlName, t.TableName)
 		}
 		t.PrimaryKey = field
+		field.IsRequired = true
 	} else if property == TagIndex {
-		field.isIndex = true
+		field.IsIndex = true
 	} else if property == TagNull {
-		field.isNullable = true
+		field.IsNullable = true
+	} else if property == TagReq {
+		field.IsRequired = true
 	} else if strings.HasPrefix(property, ":") {
 		i16, e := strconv.ParseInt(property[1:], 10, 16)
 		if e == nil {
-			field.precision = uint16(i16)
+			field.Precision = uint16(i16)
 		}
 	} else {
-		return fmt.Errorf("Unsupported property %s for field %s", property, field.sqlName)
+		return fmt.Errorf("Unsupported property %s for field %s", property, field.SqlName)
 	}
 
 	return nil
@@ -110,11 +113,6 @@ func (e *Entity) ParseFieldProperty(property string, field *Field) error {
 			return fmt.Errorf("Duplicate token field definition")
 		}
 		e.TokenField = field
-	} else if property == TagTeenant {
-		if e.TeenantField != nil {
-			return fmt.Errorf("Duplicate teenant field definition")
-		}
-		e.TeenantField = field
 	} else {
 		var t *Table = &((*e).Table)
 		return t.ParseFieldProperty(property, field)
@@ -139,8 +137,8 @@ func (t *Table) extractGorbSchema(class reflect.Type, path []int, propertyParser
 				fld.FieldName = ft.Name
 				fld.DataType = dataType
 				fld.FieldType = ft.Type
-				fld.sqlName = strings.TrimSpace(props[0])
-				fld.classIdx = append(path, i)
+				fld.SqlName = strings.TrimSpace(props[0])
+				fld.ClassIdx = append(path, i)
 
 				for i := 1; i < len(props); i++ {
 					prop := strings.TrimSpace(props[i])
@@ -152,7 +150,7 @@ func (t *Table) extractGorbSchema(class reflect.Type, path []int, propertyParser
 					}
 				}
 				if fld.FieldType.Kind() == reflect.Ptr {
-					fld.isNullable = true
+					fld.IsNullable = true
 				}
 				t.Fields = append(t.Fields, fld)
 			} else {
@@ -193,4 +191,34 @@ func (t *Table) extractGorbSchema(class reflect.Type, path []int, propertyParser
 	}
 
 	return true, nil
+}
+
+func (mgr *GorbManager) ExtractEntity(class reflect.Type, tableName string) (*Entity, error) {
+	if class.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("Invalid Gorb entity type: %s. Struct expected", class.Name())
+	}
+
+	e := new(Entity)
+	e.init()
+	e.TableName = tableName
+	e.RowClass = class
+	res, err := e.extractGorbSchema(class, []int{}, e)
+	if res {
+		res, err = e.check()
+		if res {
+			if mgr.Entities == nil {
+				mgr.Entities = make(map[reflect.Type]*Entity, 16)
+			}
+			if mgr.names == nil {
+				mgr.names = make(map[string]reflect.Type, 16)
+			}
+			e.Table.tableNo = 0
+			tables := e.FlattenChildren()
+			for i, t := range tables {
+				t.tableNo = int32(i + 1)
+			}
+		}
+	}
+
+	return e, err
 }

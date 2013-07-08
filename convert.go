@@ -2,6 +2,7 @@ package gorb
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"time"
@@ -34,6 +35,12 @@ func isZeroDateStr(str string) bool {
 	}
 	return hasDigit
 }
+
+func timeToString(time time.Time) string {
+	return time.UTC().Format(timeFormat)
+
+}
+
 func parseDateTimeStr(str string) (t time.Time, err error) {
 	switch len(str) {
 	case 10:
@@ -149,6 +156,12 @@ func parseFloat(value interface{}) (fVal float64, err error) {
 	return
 }
 
+func round(f float64, prec int) (r float64) {
+	s := strconv.FormatFloat(f, 'g', prec, 64)
+	r, _ = strconv.ParseFloat(s, 64)
+	return
+}
+
 func parseInt(value interface{}) (iVal int64, err error) {
 	iVal = 0
 	err = nil
@@ -178,6 +191,16 @@ func parseInt(value interface{}) (iVal int64, err error) {
 		iVal, err = strconv.ParseInt(src, 10, 64)
 	case []byte:
 		iVal, err = strconv.ParseInt(string(src), 10, 64)
+	case float64:
+		iVal = int64(round(src, 0))
+		if math.Abs(src-float64(iVal)) > 0.0000001 {
+			err = fmt.Errorf("Cannot convert to int64: %v %T", src, src)
+		}
+	case float32:
+		iVal = int64(src)
+		if math.Abs(round(float64(src), 0)-float64(iVal)) > 0.0000001 {
+			err = fmt.Errorf("Cannot convert to int64: %v %T", src, src)
+		}
 	default:
 		err = fmt.Errorf("Cannot convert to int64: %v %T", src, src)
 	}
@@ -209,6 +232,9 @@ func (gs *gorbScanner) Scan(value interface{}) (err error) {
 		if value == nil {
 			*dst = nil
 		} else {
+			if *dst == nil {
+				*dst = new(time.Time)
+			}
 			err = parseTime(value, *dst)
 		}
 	case *time.Time:

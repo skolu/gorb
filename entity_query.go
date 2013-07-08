@@ -73,7 +73,7 @@ func (rq *RequestQuery) NewWhereCriteria(fieldName string, op WhereOperation, va
 			break
 		}
 
-		if f.sqlName == fieldName {
+		if f.SqlName == fieldName {
 			fld = f
 			break
 		}
@@ -150,7 +150,7 @@ func (wc *WhereClause) createWhereClause() (string, []interface{}) {
 				buffer.WriteString(" AND ")
 			}
 			buffer.WriteString("(")
-			buffer.WriteString(c.field.sqlName)
+			buffer.WriteString(c.field.SqlName)
 			if c.value == nil {
 				buffer.WriteString(" IS")
 				if c.isExclude {
@@ -214,7 +214,7 @@ func (mgr *GorbManager) EntityQueryIds(request *RequestQuery) ([]int64, error) {
 	var whereClause string
 	var whereParams []interface{}
 
-	query.WriteString(fmt.Sprintf("SELECT %s FROM %s", request.ent.PrimaryKey.sqlName, request.ent.TableName))
+	query.WriteString(fmt.Sprintf("SELECT %s FROM %s", request.ent.PrimaryKey.SqlName, request.ent.TableName))
 
 	if len(request.WhereClause) > 0 {
 		whereClause, whereParams = request.WhereClause.createWhereClause()
@@ -294,13 +294,20 @@ func (mgr *GorbManager) EntityQuery(request *RequestQuery) ([]interface{}, error
 
 	for rows.Next() {
 		var pV reflect.Value = reflect.New(request.ent.RowClass)
+		initf, ok := pV.Interface().(interface {
+			OnEntityInit()
+		})
+		if ok {
+			initf.OnEntityInit()
+		}
+
 		var v = pV.Elem()
 		for i, f := range request.ent.Fields {
 			var gs *gorbScanner
 			var ok bool
 			gs, ok = fields[i].(*gorbScanner)
 			if ok {
-				fV := v.FieldByIndex(f.classIdx)
+				fV := v.FieldByIndex(f.ClassIdx)
 				gs.ptr = fV.Addr().Interface()
 			} else {
 				e = fmt.Errorf("Should not happen")

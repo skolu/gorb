@@ -16,8 +16,7 @@ type (
 	}
 )
 
-// MySql
-func MySqlColumnType(columnType string) (dataType DataType, precision uint16) {
+func mySqlColumnType(columnType string) (dataType DataType, precision uint16) {
 	columnType = strings.ToLower(columnType)
 	dataType = Unsupported
 	precision = 0
@@ -97,7 +96,7 @@ func MySqlColumnType(columnType string) (dataType DataType, precision uint16) {
 	return
 }
 
-func MySqlColumnDefinition(col *ColumnSchema) string {
+func mySqlColumnDefinition(col *ColumnSchema) string {
 	var typeDef []string = make([]string, 3)
 	typeDef[0] = col.Name
 
@@ -130,8 +129,11 @@ func MySqlColumnDefinition(col *ColumnSchema) string {
 	return strings.Join(typeDef, " ")
 }
 
-func (u *MySqlSchemaUpgrader) GetVersion() int {
+func (u *MySqlSchemaUpgrader) GetVersion() int32 {
 	return -1
+}
+func (u *MySqlSchemaUpgrader) SetVersion(version int32) error {
+	return fmt.Errorf("Not implemented")
 }
 
 func (u *MySqlSchemaUpgrader) ReadTableSchema(tableName string) (*TableSchema, error) {
@@ -168,7 +170,7 @@ func (u *MySqlSchemaUpgrader) ReadTableSchema(tableName string) (*TableSchema, e
 				tableSchema.PrimaryKey = cs
 			}
 		}
-		cs.Type, cs.Precision = MySqlColumnType(columnType)
+		cs.Type, cs.Precision = mySqlColumnType(columnType)
 
 		cs.IsNull, e = strconv.ParseBool(columnNull)
 		if e != nil {
@@ -219,10 +221,10 @@ func (u *MySqlSchemaUpgrader) CreateTable(schema *TableSchema) error {
 			if schema.PrimaryKey != schema.ForeignKey {
 				buffer.WriteString(fmt.Sprintf("\t%s %s,\n", col.Name, "SERIAL"))
 			} else {
-				buffer.WriteString(fmt.Sprintf("\t%s,\n", MySqlColumnDefinition(col)))
+				buffer.WriteString(fmt.Sprintf("\t%s,\n", mySqlColumnDefinition(col)))
 			}
 		} else {
-			buffer.WriteString(fmt.Sprintf("\t%s,\n", MySqlColumnDefinition(col)))
+			buffer.WriteString(fmt.Sprintf("\t%s,\n", mySqlColumnDefinition(col)))
 		}
 	}
 
@@ -270,7 +272,7 @@ func (u *MySqlSchemaUpgrader) CreateTable(schema *TableSchema) error {
 func (u *MySqlSchemaUpgrader) AlterTableAddColumn(tableName string, column *ColumnSchema) error {
 	var buffer bytes.Buffer
 
-	buffer.WriteString(fmt.Sprintf("Alter Table %s Add Column %s;", tableName, MySqlColumnDefinition(column)))
+	buffer.WriteString(fmt.Sprintf("Alter Table %s Add Column %s;", tableName, mySqlColumnDefinition(column)))
 
 	var query string = buffer.String()
 	if u.IsTestMode {

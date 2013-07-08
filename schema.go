@@ -5,7 +5,9 @@ import (
 	"reflect"
 )
 
-type DataType uint
+type DataType uint32
+
+type EntityType uint32
 
 const (
 	Unsupported DataType = iota
@@ -27,11 +29,12 @@ type (
 		FieldName  string
 		DataType   DataType
 		FieldType  reflect.Type
-		sqlName    string
-		precision  uint16
-		isIndex    bool
-		isNullable bool
-		classIdx   []int
+		SqlName    string
+		Precision  uint16
+		IsNullable bool
+		IsIndex    bool
+		IsRequired bool
+		ClassIdx   []int
 	}
 
 	Table struct {
@@ -40,8 +43,8 @@ type (
 		PrimaryKey *Field
 		Children   []*ChildTable
 		RowClass   reflect.Type
-		tableNo    int32
 		IsPkSerial bool
+		tableNo    int32
 		stmts      *tableStmts
 	}
 
@@ -55,7 +58,6 @@ type (
 	Entity struct {
 		Table
 		TokenField   *Field
-		TeenantField *Field
 		selectFields string
 	}
 )
@@ -63,6 +65,24 @@ type (
 func (t *Table) init() {
 	t.Fields = make([]*Field, 0, 32)
 	t.Children = make([]*ChildTable, 0, 8)
+}
+
+func (t *Table) FieldByName(name string) *Field {
+	for _, f := range t.Fields {
+		if f.FieldName == name {
+			return f
+		}
+	}
+	return nil
+}
+
+func (t *Table) ChildByName(name string) *ChildTable {
+	for _, ch := range t.Children {
+		if ch.TableName == name {
+			return ch
+		}
+	}
+	return nil
 }
 
 func (t *Table) check() (bool, error) {

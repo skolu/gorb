@@ -30,9 +30,8 @@ type (
 	}
 
 	entityData struct {
-		pk      int64
-		token   uint32
-		teenant uint32
+		pk    int64
+		token uint32
 
 		updated  int
 		inserted int
@@ -154,7 +153,7 @@ func (ch *ChildTable) populateData(data *entityData, pk int64) error {
 }
 func (ent *Entity) populateData(data *entityData, pk int64) error {
 	var e error = nil
-	e = ent.stmts.stmtInfo.QueryRow(pk).Scan(&((*data).pk), &((*data).token), &((*data).teenant))
+	e = ent.stmts.stmtInfo.QueryRow(pk).Scan(&((*data).pk), &((*data).token))
 	if e != nil {
 		return e
 	}
@@ -173,7 +172,7 @@ func (t *Table) storeRow(txn *sql.Tx, row reflect.Value, logger entityInfo) erro
 	var e error
 	var pk int64
 
-	pkValue := row.FieldByIndex(t.PrimaryKey.classIdx)
+	pkValue := row.FieldByIndex(t.PrimaryKey.ClassIdx)
 	switch pkValue.Kind() {
 	case reflect.Int, reflect.Int32, reflect.Int64:
 		pk = pkValue.Int()
@@ -191,7 +190,7 @@ func (t *Table) storeRow(txn *sql.Tx, row reflect.Value, logger entityInfo) erro
 	var flds []interface{} = make([]interface{}, 0, len(t.Fields))
 	for _, f := range t.Fields {
 		if f != t.PrimaryKey {
-			fv := row.FieldByIndex(f.classIdx)
+			fv := row.FieldByIndex(f.ClassIdx)
 			if fv.Kind() == reflect.Ptr {
 				if !fv.IsNil() {
 					fv = fv.Elem()
@@ -314,7 +313,7 @@ func (t *Table) storeRow(txn *sql.Tx, row reflect.Value, logger entityInfo) erro
 }
 
 func (c *ChildTable) storeChildRow(txn *sql.Tx, row reflect.Value, parentId int64, logger entityInfo) error {
-	fkValue := row.FieldByIndex(c.ParentKey.classIdx)
+	fkValue := row.FieldByIndex(c.ParentKey.ClassIdx)
 	fkKind := fkValue.Type().Kind()
 	if fkKind == reflect.Ptr {
 		if fkValue.IsNil() {
@@ -369,7 +368,7 @@ func (conn *GorbManager) EntityPut(entity interface{}) error {
 	if isPtr {
 		eValue = eValue.Elem()
 	}
-	pkValue := eValue.FieldByIndex(ent.PrimaryKey.classIdx)
+	pkValue := eValue.FieldByIndex(ent.PrimaryKey.ClassIdx)
 	switch pkValue.Kind() {
 	case reflect.Int, reflect.Int32, reflect.Int64:
 		eData.pk = pkValue.Int()
@@ -389,15 +388,9 @@ func (conn *GorbManager) EntityPut(entity interface{}) error {
 		}
 
 		if ent.TokenField != nil {
-			var token int64 = eValue.FieldByIndex(ent.TokenField.classIdx).Int()
+			var token int64 = eValue.FieldByIndex(ent.TokenField.ClassIdx).Int()
 			if token != int64(eData.token) {
 				return fmt.Errorf("Invalid Edit Token")
-			}
-		}
-		if ent.TeenantField != nil {
-			var teenant int64 = eValue.FieldByIndex(ent.TeenantField.classIdx).Int()
-			if teenant != int64(eData.teenant) {
-				return fmt.Errorf("Invalid Teenant")
 			}
 		}
 	}

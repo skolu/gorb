@@ -7,38 +7,33 @@ import (
 
 func (c *ChildTable) getInfoQuery(tablePath []*ChildTable) string {
 	if len(tablePath) == 0 {
-		return fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", c.PrimaryKey.sqlName, c.TableName, c.ParentKey.sqlName)
+		return fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", c.PrimaryKey.SqlName, c.TableName, c.ParentKey.SqlName)
 	}
 
 	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("SELECT t%d.%s FROM %s t%d", c.tableNo, c.PrimaryKey.sqlName, c.TableName, c.tableNo))
+	buffer.WriteString(fmt.Sprintf("SELECT t%d.%s FROM %s t%d", c.tableNo, c.PrimaryKey.SqlName, c.TableName, c.tableNo))
 
 	fullPath := append(tablePath, c)
 	for i := len(fullPath) - 2; i >= 0; i-- {
 		t1 := fullPath[i]
 		t2 := fullPath[i+1]
-		buffer.WriteString(fmt.Sprintf(" INNER JOIN %s t%d ON t%d.%s = t%d.%s", t1.TableName, t1.tableNo, t1.tableNo, t1.PrimaryKey.sqlName, t2.tableNo, t2.ParentKey.sqlName))
+		buffer.WriteString(fmt.Sprintf(" INNER JOIN %s t%d ON t%d.%s = t%d.%s", t1.TableName, t1.tableNo, t1.tableNo, t1.PrimaryKey.SqlName, t2.tableNo, t2.ParentKey.SqlName))
 	}
 
-	buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", tablePath[0].tableNo, tablePath[0].ParentKey.sqlName))
+	buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", tablePath[0].tableNo, tablePath[0].ParentKey.SqlName))
 
 	return buffer.String()
 }
 
 func (e *Entity) getInfoQuery() string {
 	var buffer bytes.Buffer
-	buffer.WriteString(fmt.Sprintf("SELECT %s", e.PrimaryKey.sqlName))
+	buffer.WriteString(fmt.Sprintf("SELECT %s", e.PrimaryKey.SqlName))
 	if e.TokenField != nil {
-		buffer.WriteString(fmt.Sprintf(", %s", e.TokenField.sqlName))
+		buffer.WriteString(fmt.Sprintf(", %s", e.TokenField.SqlName))
 	} else {
 		buffer.WriteString(", 0")
 	}
-	if e.TeenantField != nil {
-		buffer.WriteString(fmt.Sprintf(", %s", e.TeenantField.sqlName))
-	} else {
-		buffer.WriteString(", 0")
-	}
-	buffer.WriteString(fmt.Sprintf(" FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.sqlName))
+	buffer.WriteString(fmt.Sprintf(" FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.SqlName))
 
 	return buffer.String()
 }
@@ -51,7 +46,7 @@ func (c *ChildTable) getSelectQuery(tablePath []*ChildTable) string {
 		if i > 0 {
 			buffer.WriteString(", ")
 		}
-		buffer.WriteString(fmt.Sprintf("t%d.%s", c.tableNo, f.sqlName))
+		buffer.WriteString(fmt.Sprintf("t%d.%s", c.tableNo, f.SqlName))
 	}
 
 	buffer.WriteString(fmt.Sprintf(" FROM %s t%d ", c.TableName, c.tableNo))
@@ -60,11 +55,11 @@ func (c *ChildTable) getSelectQuery(tablePath []*ChildTable) string {
 		for i := len(fullPath) - 2; i >= 1; i-- {
 			t1 := fullPath[i]
 			t2 := fullPath[i+1]
-			buffer.WriteString(fmt.Sprintf(" INNER JOIN %s t%d ON t%d.%s = t%d.%s", t1.TableName, t1.tableNo, t1.tableNo, t1.PrimaryKey.sqlName, t2.tableNo, t2.ParentKey.sqlName))
+			buffer.WriteString(fmt.Sprintf(" INNER JOIN %s t%d ON t%d.%s = t%d.%s", t1.TableName, t1.tableNo, t1.tableNo, t1.PrimaryKey.SqlName, t2.tableNo, t2.ParentKey.SqlName))
 		}
-		buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", tablePath[1].tableNo, tablePath[1].ParentKey.sqlName))
+		buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", tablePath[1].tableNo, tablePath[1].ParentKey.SqlName))
 	} else {
-		buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", c.tableNo, c.ParentKey.sqlName))
+		buffer.WriteString(fmt.Sprintf(" WHERE t%d.%s = ?", c.tableNo, c.ParentKey.SqlName))
 	}
 
 	return buffer.String()
@@ -78,7 +73,7 @@ func (e *Entity) getSelectFields() string {
 		if i > 0 {
 			buffer.WriteString(", ")
 		}
-		buffer.WriteString(f.sqlName)
+		buffer.WriteString(f.SqlName)
 	}
 
 	buffer.WriteString(fmt.Sprintf(" FROM %s", e.TableName))
@@ -94,10 +89,10 @@ func (e *Entity) getSelectQuery() string {
 		if i > 0 {
 			buffer.WriteString(", ")
 		}
-		buffer.WriteString(f.sqlName)
+		buffer.WriteString(f.SqlName)
 	}
 
-	buffer.WriteString(fmt.Sprintf(" FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.sqlName))
+	buffer.WriteString(fmt.Sprintf(" FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.SqlName))
 
 	return buffer.String()
 }
@@ -111,7 +106,7 @@ func (c *ChildTable) getInsertQuery() string {
 
 	i := 0
 	if !c.IsPkSerial { // put PK first
-		buffer.WriteString(c.PrimaryKey.sqlName)
+		buffer.WriteString(c.PrimaryKey.SqlName)
 		i++
 	}
 	for _, f := range c.Fields {
@@ -119,7 +114,7 @@ func (c *ChildTable) getInsertQuery() string {
 			if i > 0 {
 				buffer.WriteString(", ")
 			}
-			buffer.WriteString(f.sqlName)
+			buffer.WriteString(f.SqlName)
 			i++
 		}
 	}
@@ -144,7 +139,7 @@ func (e *Entity) getInsertQuery() string {
 
 	i := 0
 	if !e.IsPkSerial { // put PK first
-		buffer.WriteString(e.PrimaryKey.sqlName)
+		buffer.WriteString(e.PrimaryKey.SqlName)
 		i++
 	}
 	for _, f := range e.Fields {
@@ -152,7 +147,7 @@ func (e *Entity) getInsertQuery() string {
 			if i > 0 {
 				buffer.WriteString(", ")
 			}
-			buffer.WriteString(f.sqlName)
+			buffer.WriteString(f.SqlName)
 			i++
 		}
 	}
@@ -182,37 +177,37 @@ func (t *Table) getUpdateQuery() string {
 		}
 		if f != t.PrimaryKey {
 			i++
-			buffer.WriteString(f.sqlName)
+			buffer.WriteString(f.SqlName)
 			buffer.WriteString("=?")
 		}
 	}
 	buffer.WriteString(" WHERE ")
-	buffer.WriteString(t.PrimaryKey.sqlName)
+	buffer.WriteString(t.PrimaryKey.SqlName)
 	buffer.WriteString("=?")
 
 	return buffer.String()
 }
 
 func (t *Table) getRemoveQuery() string {
-	return fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, t.PrimaryKey.sqlName)
+	return fmt.Sprintf("DELETE FROM %s WHERE %s = ?", t.TableName, t.PrimaryKey.SqlName)
 }
 
 func (c *ChildTable) getDeleteQuery(tablePath []*ChildTable) string {
 	var buffer bytes.Buffer
 
 	if len(tablePath) == 0 {
-		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", c.TableName, c.ParentKey.sqlName))
+		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s = ?", c.TableName, c.ParentKey.SqlName))
 	} else {
 		open := 1
-		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s IN (", c.TableName, c.ParentKey.sqlName))
+		buffer.WriteString(fmt.Sprintf("DELETE FROM %s WHERE %s IN (", c.TableName, c.ParentKey.SqlName))
 		for i := len(tablePath) - 1; i >= 0; i-- {
 			tbl := tablePath[i]
 			if i > 1 {
 				open++
-				buffer.WriteString(fmt.Sprintf("SELECT %s FROM %s WHERE %s IN (", tbl.PrimaryKey.sqlName, tbl.TableName, tbl.ParentKey.sqlName))
+				buffer.WriteString(fmt.Sprintf("SELECT %s FROM %s WHERE %s IN (", tbl.PrimaryKey.SqlName, tbl.TableName, tbl.ParentKey.SqlName))
 
 			} else {
-				buffer.WriteString(fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", tbl.PrimaryKey.sqlName, tbl.TableName, tbl.ParentKey.sqlName))
+				buffer.WriteString(fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", tbl.PrimaryKey.SqlName, tbl.TableName, tbl.ParentKey.SqlName))
 			}
 
 		}
@@ -226,5 +221,5 @@ func (c *ChildTable) getDeleteQuery(tablePath []*ChildTable) string {
 }
 
 func (e *Entity) getDeleteQuery() string {
-	return fmt.Sprintf("DELETE FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.sqlName)
+	return fmt.Sprintf("DELETE FROM %s WHERE %s = ?", e.TableName, e.PrimaryKey.SqlName)
 }

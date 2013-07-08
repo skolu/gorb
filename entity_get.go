@@ -12,7 +12,7 @@ func (t *Table) populateChildren(row reflect.Value) error {
 	}
 
 	var rowKey reflect.Value
-	rowKey = row.FieldByIndex(t.PrimaryKey.classIdx)
+	rowKey = row.FieldByIndex(t.PrimaryKey.ClassIdx)
 
 	for _, childTable := range t.Children {
 		var e error
@@ -47,7 +47,7 @@ func (t *Table) populateChildren(row reflect.Value) error {
 			childRow = childRow.Elem()
 
 			for i, f := range childTable.Fields {
-				pV := childRow.FieldByIndex(f.classIdx).Addr().Interface()
+				pV := childRow.FieldByIndex(f.ClassIdx).Addr().Interface()
 				gs, ok := flds[i].(*gorbScanner)
 				if ok {
 					gs.ptr = pV
@@ -69,7 +69,7 @@ func (t *Table) populateChildren(row reflect.Value) error {
 				}
 			case reflect.Map:
 				{
-					childKey := childRow.FieldByIndex(childTable.PrimaryKey.classIdx)
+					childKey := childRow.FieldByIndex(childTable.PrimaryKey.ClassIdx)
 					childStorage.SetMapIndex(childKey, childRow.Addr())
 				}
 			}
@@ -115,7 +115,7 @@ func (conn *GorbManager) EntityGet(object interface{}, pk interface{}) error {
 		rowValue = rowValue.Elem()
 	}
 	for i, f := range ent.Fields {
-		pV := rowValue.FieldByIndex(f.classIdx).Addr().Interface()
+		pV := rowValue.FieldByIndex(f.ClassIdx).Addr().Interface()
 		var gs gorbScanner
 		gs.ptr = pV
 		flds[i] = &gs
